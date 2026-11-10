@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>景深对账台 · 想让这一段都拍清楚，对焦放哪、光圈开多大</title>
+<meta name="description" content="给定画幅、焦距、光圈、对焦距离，算清实际的清晰范围（近点到远点）、超焦距、前后景深、背景弥散圆与衍射转折光圈；再反推「要让目标区间整段清晰，对焦该放哪、光圈最小开多大」。全部自己填，页面不联网。">
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#fff; --ink:#161b22; --ink2:#4a5568; --ink3:#7b8794;
+    --line:#e3e6eb; --line2:#cbd2da; --brand:#0f5fa6; --brand2:#eaf2fa;
+    --good:#0f7b52; --goodbg:#e8f6ef; --warn:#9a5b00; --warnbg:#fff5e5; --bad:#b42318; --badbg:#fdeceb;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  .app{max-width:1320px;margin:0 auto;padding:22px 18px 60px;display:grid;grid-template-columns:404px minmax(0,1fr);gap:18px;align-items:start}
+  .app > *{min-width:0}
+  header.top{grid-column:1/-1;padding:4px 2px 0}
+  h1{margin:0 0 6px;font-size:26px;letter-spacing:.2px}
+  .lede{margin:0;color:var(--ink2);max-width:900px}
+  .badges{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;background:#fff;border:1px solid var(--line2);color:var(--ink2)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 14px;margin:0 0 14px;box-shadow:0 1px 2px rgba(16,32,64,.04)}
+  .card h2{margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card h3{margin:16px 0 8px;font-size:14px;color:var(--ink2)}
+  .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--brand2);color:var(--brand);border:1px solid #d3e3f5}
+  .tag.gray{background:#f1f3f6;color:var(--ink2);border-color:var(--line2)}
+  .field{margin-bottom:11px}
+  .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:4px}
+  .field label .sub{color:var(--ink3);font-size:12px}
+  input[type=text],select{width:100%;padding:8px 10px;border:1px solid var(--line2);border-radius:9px;font-size:14px;background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=text]:focus,select:focus{outline:2px solid #bcd8f0;border-color:var(--brand)}
+  input.bad{border-color:var(--bad);background:var(--badbg)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{font-size:12px;padding:5px 9px;border-radius:999px}
+  .seg button.on{background:var(--brand2);border-color:#bcd8f0;color:var(--brand);font-weight:600}
+  .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
+  .chk input{margin:0}
+  button{font:inherit;font-size:13px;padding:8px 12px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--ink);cursor:pointer}
+  button:hover{background:#f7f9fb}
+  button.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  button.primary:hover{background:#0d4f8a}
+  button.tiny{font-size:12px;padding:4px 8px}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .footnote{font-size:12px;color:var(--ink3);margin-top:8px;line-height:1.55}
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  th{color:var(--ink2);font-weight:600;background:#fafbfc;font-size:12px}
+  th:first-child,td:first-child{text-align:left;white-space:normal;word-break:keep-all}
+  tbody tr.pick{cursor:pointer}
+  tbody tr.pick:hover{background:#f7f9fb}
+  tbody tr.sel{background:var(--brand2)}
+  tbody tr.sel td{border-bottom-color:#bcd8f0}
+  tr.sum td{font-weight:700;background:#fafbfc}
+  .tw{overflow-x:auto;max-width:100%}
+  /* 方案/敏感性表的第一列是名称，长名称必须能折行，否则一列就把整张表撑到看不见其余列 */
+  #planTable th:first-child,#planTable td:first-child,
+  #sensTable th:first-child,#sensTable td:first-child{word-break:break-word;overflow-wrap:anywhere}
+  table.wrap th,table.wrap td{white-space:normal;word-break:keep-all}
+  table.wrap{table-layout:fixed}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+  .kpi{background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+  .kpi .k{font-size:12px;color:var(--ink2);margin-bottom:2px}
+  .kpi .v{font-size:20px;font-weight:700;letter-spacing:-.2px;word-break:keep-all}
+  .kpi .s{font-size:11px;color:var(--ink3);overflow-wrap:anywhere}
+  .concl{background:var(--brand2);border:1px solid #d3e3f5;border-radius:10px;padding:12px 14px;font-size:15px;line-height:1.7}
+  .metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
+  .metric .mk{font-size:12px;color:var(--ink2)}
+  .metric .mv{font-size:18px;font-weight:700;word-break:keep-all}
+  .metric .ms{font-size:11px;color:var(--ink3);word-break:keep-all}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:4px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .pill.ok{background:var(--goodbg);color:var(--good)}
+  .pill.tight{background:var(--warnbg);color:var(--warn)}
+  .pill.fail{background:var(--badbg);color:var(--bad)}
+  .vd{color:var(--good)} .vt{color:var(--warn)} .vf{color:var(--bad)}
+  .bar{height:8px;border-radius:6px;background:#eef1f5;overflow:hidden;min-width:52px}
+  .bar > i{display:block;height:100%;border-radius:6px}
+  ul.tight{margin:4px 0 0;padding-left:20px}
+  ul.tight li{margin:5px 0;line-height:1.6}
+  ol.tight{margin:4px 0 0;padding-left:20px}
+  ol.tight li{margin:5px 0;line-height:1.6}
+  .item{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:#fcfdfe}
+  .itemhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .itemhead input.nm{flex:1 1 120px;min-width:0;font-weight:600}
+  .itemhead select{flex:0 1 178px;min-width:0;font-size:12.5px}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:8px}
+  .grid4 label{display:block;font-size:11.5px;color:var(--ink3);line-height:1.4}
+  .grid4 input{width:100%;padding:6px 8px;font-size:13px}
+  .warnbox{background:var(--warnbg);border:1px solid #f2d9ad;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#6b3f00}
+  .errbox{background:var(--badbg);border:1px solid #f3c6c2;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#7a1a12}
+  .okbox{background:var(--goodbg);border:1px solid #bfe4d1;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#0b5c3e}
+  .slices{display:grid;grid-template-columns:1fr;gap:8px}
+  .slice{font-size:12.8px;color:var(--ink2);border-left:3px solid var(--line2);padding-left:9px}
+  .slice b{color:var(--ink)}
+  .slice .st{display:block;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .muted{color:var(--ink3)}
+  .sticky{position:sticky;top:14px;max-height:calc(100vh - 24px);overflow-y:auto}
+  .hidden{display:none !important}
+  @media (max-width:1000px){
+    .app{grid-template-columns:minmax(0,1fr)}
+    .sticky{position:static;max-height:none;overflow:visible}
+    table{font-size:12.5px}
+    th,td{padding:6px 7px}
+  }
+  @media (max-width:620px){
+    .app{padding:16px 12px 48px}
+    h1{font-size:22px}
+    .kpi .v{font-size:18px}
+    .grid4{grid-template-columns:repeat(auto-fit,minmax(78px,1fr))}
+    /* 宽表在窄屏下改为定宽 + 容器内横向滚动：列宽稳定，长名称折行而不是独占整行 */
+    #planTable{table-layout:fixed;width:872px}
+    #planTable th:first-child,#planTable td:first-child{width:158px}
+    #planTable th:nth-child(10),#planTable td:nth-child(10){width:92px}
+    #planTable th:nth-child(11),#planTable td:nth-child(11){width:72px}
+    #sensTable{table-layout:fixed;width:790px}
+    #sensTable th:first-child,#sensTable td:first-child{width:186px}
+    #sensTable th:nth-child(9),#sensTable td:nth-child(9){width:92px}
+  }
+  .scrollhint{display:none}
+  @media (max-width:1000px){ .scrollhint{display:inline} }
+  input[type=file]{max-width:100%;min-width:0}
+  .btns > *{min-width:0}
+  @media (max-width:420px){
+    .grid4{grid-template-columns:repeat(2,minmax(0,1fr))}
+    input[type=file]{width:120px;font-size:11px}
+    .row2{grid-template-columns:minmax(0,1fr)}
+    .btns{gap:6px}
+    .btns button{font-size:12px;padding:7px 9px}
+    .seg button{font-size:11.5px;padding:5px 7px}
+    .itemhead select{flex:1 1 100%}
+  }
+  @media print{
+    body{background:#fff}
+    .sticky{position:static;max-height:none;overflow:visible}
+    .app{grid-template-columns:minmax(0,1fr);max-width:none}
+    .no-print{display:none !important}
+    .card{break-inside:avoid;box-shadow:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>景深对账台</h1>
+    <p class="lede">「我想让这一段距离都拍清楚」其实是一笔可以算清的账：给定画幅、焦距、光圈、对焦距离，<b>实际的清晰范围是从几米到几米</b>、超焦距在哪、前后景深各多少、收小光圈到哪一步就没用了（衍射）。反过来——要让 <b>目标区间整段清晰</b>，对焦该放在哪、光圈最小开多大——本页给闭式解并回代验算。</p>
+    <div class="badges">
+      <span class="badge">薄透镜景深公式 + 超焦距 + 艾里斑 + 等效口径，全部可复算</span>
+      <span class="badge">默认 6 个方案是虚构示例</span>
+      <span class="badge">不联网 · 不测量真实镜头 · 不做器材评价</span>
+    </div>
+  </header>
+
+  <div class="sticky">
+    <form id="form" onsubmit="return false">
+      <div class="card">
+        <h2>画幅与清晰口径 <span class="tag">所有方案共用</span></h2>
+        <div class="field">
+          <label>弥散圆口径 <span class="sub">决定「多小算清晰」</span></label>
+          <select id="cocMode"></select>
+        </div>
+        <div class="field cond" id="wrapPx">
+          <label>横向像素数（px）<span class="sub">像素级口径：c = 2 × 画幅宽 ÷ 像素数</span></label>
+          <input type="text" id="cocPx">
+        </div>
+        <div class="field cond" id="wrapCoc">
+          <label>自定义弥散圆 c（mm）</label>
+          <input type="text" id="cocCustom">
+        </div>
+        <div class="row2">
+          <div class="field"><label>波长 λ（nm）<span class="sub">衍射口径</span></label><input type="text" id="lambda"></div>
+          <div class="field"><label>对照画幅 <span class="sub">算等效焦距/等效光圈</span></label><select id="refSensor"></select></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>自定义画幅宽（mm）</label><input type="text" id="csW"></div>
+          <div class="field"><label>自定义画幅高（mm）</label><input type="text" id="csH"></div>
+        </div>
+        <p class="footnote">弥散圆 c 是<b>显示约定，不是物理常数</b>：换口径会直接改变结论，本页把口径和实际 c 值一起显示出来。默认口径「对角线 ÷ 1500」是最常见的那一种。</p>
+      </div>
+
+      <div class="card">
+        <h2>目标区间 <span class="tag gray">你想让哪一段清晰</span></h2>
+        <div class="row2">
+          <div class="field"><label>目标近点（m）</label><input type="text" id="tNear"></div>
+          <div class="field"><label>目标远点（m）</label><input type="text" id="tFar"></div>
+        </div>
+        <div class="field"><label class="chk"><input type="checkbox" id="tFarInf"> 远点取无限远（只关心「从这里到 ∞ 都清晰」）</label></div>
+        <div class="field"><label>反推用焦距（mm）<span class="sub">反推要指定一个镜头</span></label><input type="text" id="solveF"></div>
+        <p class="footnote">目标区间是<b>场景要求</b>，与具体方案无关。反推出的对焦距离 <b>与焦距无关</b>（它是两端点的调和平均），但所需光圈会随焦距增长——下面有一张对照表。</p>
+      </div>
+
+      <div class="card">
+        <h2>方案清单 <span class="tag gray" id="rowCount"></span></h2>
+        <div id="rows"></div>
+        <div class="btns">
+          <button type="button" id="btnAddRow">加一个方案</button>
+          <button type="button" id="btnDup">复制最后一个</button>
+        </div>
+        <p class="footnote">「对焦距离」是<b>相对镜头的物距</b>（薄透镜口径），与镜身上「从像面算起」的刻度有差异，本页不换算。</p>
+      </div>
+
+      <div class="card">
+        <h2>场景</h2>
+        <div class="field"><label>一键换上（会覆盖当前输入）</label><select id="scenario"></select></div>
+        <p class="footnote">场景只改数字。默认、内置场景与页面上所有数字<b>都是虚构示例</b>，不是任何真实器材的实测数据。</p>
+      </div>
+
+      <div class="card no-print">
+        <h2>保存与导出</h2>
+        <div class="btns">
+          <button type="button" class="primary" id="btnSave">保存到本机</button>
+          <button type="button" id="btnLoad">读取本机</button>
+          <button type="button" id="btnReset">恢复默认示例</button>
+        </div>
+        <div class="btns">
+          <button type="button" id="btnCsv">导出 CSV</button>
+          <button type="button" id="btnMd">导出 Markdown</button>
+          <button type="button" id="btnJson">导出 JSON 备份</button>
+          <button type="button" id="btnPng">导出结果卡 PNG</button>
+        </div>
+        <div class="btns">
+          <label class="chk" style="font-size:13px"><span>导入备份</span><input type="file" id="importFile" accept=".json,application/json"></label>
+          <button type="button" id="btnPrint">打印视图</button>
+        </div>
+        <p class="footnote" id="saveState">改动会即时重算；「保存到本机」用的是浏览器本地存储（只在这台机器上）。</p>
+      </div>
+    </form>
+  </div>
+
+  <main>
+    <div class="card">
+      <h2>结论 <span class="tag gray" id="verdictTag"></span></h2>
+      <div id="errors"></div>
+      <div class="concl" id="headline"></div>
+      <div class="kpis" id="kpis" style="margin-top:12px"></div>
+      <div id="warnBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>反推：要让目标区间整段清晰 <span class="tag gray" id="revTag"></span></h2>
+      <div id="reverse"></div>
+    </div>
+
+    <div class="card">
+      <h2>方案对照 <span class="tag gray">点任意一行看详解</span></h2>
+      <div class="tw">
+        <table id="planTable">
+          <thead><tr>
+            <th>方案</th><th>画幅</th><th>焦距</th><th>光圈</th><th>对焦距离</th>
+            <th>超焦距</th><th>近点</th><th>远点</th><th>总景深</th><th>覆盖</th><th>判定</th>
+          </tr></thead>
+          <tbody id="planBody"></tbody>
+        </table>
+      </div>
+      <p class="footnote">「覆盖」比的是<b>目标区间是否整段落在 [近点, 远点] 内</b>。<span id="cocNote"></span> <span class="scrollhint">窄屏下这张表可以左右滑动看完整列。</span></p>
+    </div>
+
+    <div class="card">
+      <h2>选中方案详解 <span class="tag" id="detailName"></span></h2>
+      <div id="detailBody"></div>
+    </div>
+
+    <div class="card">
+      <h2>口径对照 <span class="tag gray">同一份设置换口径/换画幅会怎样</span></h2>
+      <div id="lawBody"></div>
+    </div>
+
+    <div class="card">
+      <h2>值得记住的几条 <span class="tag gray">都能在下面的表里复核</span></h2>
+      <div class="slices" id="insights"></div>
+    </div>
+
+    <div class="card">
+      <h2>敏感性 <span class="tag gray" id="sensOf"></span></h2>
+      <div class="tw"><table id="sensTable">
+        <thead><tr><th>改动</th><th>焦距</th><th>光圈</th><th>对焦距离</th><th>近点</th><th>远点</th><th>总景深</th><th>变化</th><th>覆盖</th></tr></thead>
+        <tbody id="sensBody"></tbody>
+      </table></div>
+      <p class="footnote">每一行都是<b>完整重算</b>过的，不是按比例估算。 <span class="scrollhint">窄屏下这张表可以左右滑动看完整列。</span></p>
+    </div>
+
+    <div class="card">
+      <h2>下一步</h2>
+      <ol class="tight" id="steps"></ol>
+    </div>
+
+    <div class="card">
+      <h2>这份账不算什么</h2>
+      <ul class="tight" id="limits"></ul>
+    </div>
+
+    <div class="card">
+      <h2>结构自检 <span class="tag gray" id="checkTag"></span></h2>
+      <ul class="tight" id="checks"></ul>
+      <p class="footnote">这些是每次重算都会跑的一致性与恒等式检查：对焦在超焦距时近点 = H/2、s = H/3 时前后比 = H : (2H − 3f)、反推回代命中目标、N = N_d 时艾里斑等于弥散圆、等效口径与按 k 缩放的闭式解一致、覆盖判定与近点远点一致、结果里没有 NaN。它们是<b>本页内部一致性</b>的证据，不等于物理结论已被外部实验证实。</p>
+    </div>
+  </main>
+</div>
+<script>/*CORE*/</script>
+<script>/*UI*/</script>
+</body>
+</html>

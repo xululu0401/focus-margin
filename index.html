@@ -1,0 +1,2317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>景深对账台 · 想让这一段都拍清楚，对焦放哪、光圈开多大</title>
+<meta name="description" content="给定画幅、焦距、光圈、对焦距离，算清实际的清晰范围（近点到远点）、超焦距、前后景深、背景弥散圆与衍射转折光圈；再反推「要让目标区间整段清晰，对焦该放哪、光圈最小开多大」。全部自己填，页面不联网。">
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#fff; --ink:#161b22; --ink2:#4a5568; --ink3:#7b8794;
+    --line:#e3e6eb; --line2:#cbd2da; --brand:#0f5fa6; --brand2:#eaf2fa;
+    --good:#0f7b52; --goodbg:#e8f6ef; --warn:#9a5b00; --warnbg:#fff5e5; --bad:#b42318; --badbg:#fdeceb;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  .app{max-width:1320px;margin:0 auto;padding:22px 18px 60px;display:grid;grid-template-columns:404px minmax(0,1fr);gap:18px;align-items:start}
+  .app > *{min-width:0}
+  header.top{grid-column:1/-1;padding:4px 2px 0}
+  h1{margin:0 0 6px;font-size:26px;letter-spacing:.2px}
+  .lede{margin:0;color:var(--ink2);max-width:900px}
+  .badges{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;background:#fff;border:1px solid var(--line2);color:var(--ink2)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 14px;margin:0 0 14px;box-shadow:0 1px 2px rgba(16,32,64,.04)}
+  .card h2{margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card h3{margin:16px 0 8px;font-size:14px;color:var(--ink2)}
+  .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--brand2);color:var(--brand);border:1px solid #d3e3f5}
+  .tag.gray{background:#f1f3f6;color:var(--ink2);border-color:var(--line2)}
+  .field{margin-bottom:11px}
+  .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:4px}
+  .field label .sub{color:var(--ink3);font-size:12px}
+  input[type=text],select{width:100%;padding:8px 10px;border:1px solid var(--line2);border-radius:9px;font-size:14px;background:#fff;color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=text]:focus,select:focus{outline:2px solid #bcd8f0;border-color:var(--brand)}
+  input.bad{border-color:var(--bad);background:var(--badbg)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{font-size:12px;padding:5px 9px;border-radius:999px}
+  .seg button.on{background:var(--brand2);border-color:#bcd8f0;color:var(--brand);font-weight:600}
+  .chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
+  .chk input{margin:0}
+  button{font:inherit;font-size:13px;padding:8px 12px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--ink);cursor:pointer}
+  button:hover{background:#f7f9fb}
+  button.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  button.primary:hover{background:#0d4f8a}
+  button.tiny{font-size:12px;padding:4px 8px}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .footnote{font-size:12px;color:var(--ink3);margin-top:8px;line-height:1.55}
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  th{color:var(--ink2);font-weight:600;background:#fafbfc;font-size:12px}
+  th:first-child,td:first-child{text-align:left;white-space:normal;word-break:keep-all}
+  tbody tr.pick{cursor:pointer}
+  tbody tr.pick:hover{background:#f7f9fb}
+  tbody tr.sel{background:var(--brand2)}
+  tbody tr.sel td{border-bottom-color:#bcd8f0}
+  tr.sum td{font-weight:700;background:#fafbfc}
+  .tw{overflow-x:auto;max-width:100%}
+  /* 方案/敏感性表的第一列是名称，长名称必须能折行，否则一列就把整张表撑到看不见其余列 */
+  #planTable th:first-child,#planTable td:first-child,
+  #sensTable th:first-child,#sensTable td:first-child{word-break:break-word;overflow-wrap:anywhere}
+  table.wrap th,table.wrap td{white-space:normal;word-break:keep-all}
+  table.wrap{table-layout:fixed}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+  .kpi{background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+  .kpi .k{font-size:12px;color:var(--ink2);margin-bottom:2px}
+  .kpi .v{font-size:20px;font-weight:700;letter-spacing:-.2px;word-break:keep-all}
+  .kpi .s{font-size:11px;color:var(--ink3);overflow-wrap:anywhere}
+  .concl{background:var(--brand2);border:1px solid #d3e3f5;border-radius:10px;padding:12px 14px;font-size:15px;line-height:1.7}
+  .metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
+  .metric .mk{font-size:12px;color:var(--ink2)}
+  .metric .mv{font-size:18px;font-weight:700;word-break:keep-all}
+  .metric .ms{font-size:11px;color:var(--ink3);word-break:keep-all}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:4px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .pill.ok{background:var(--goodbg);color:var(--good)}
+  .pill.tight{background:var(--warnbg);color:var(--warn)}
+  .pill.fail{background:var(--badbg);color:var(--bad)}
+  .vd{color:var(--good)} .vt{color:var(--warn)} .vf{color:var(--bad)}
+  .bar{height:8px;border-radius:6px;background:#eef1f5;overflow:hidden;min-width:52px}
+  .bar > i{display:block;height:100%;border-radius:6px}
+  ul.tight{margin:4px 0 0;padding-left:20px}
+  ul.tight li{margin:5px 0;line-height:1.6}
+  ol.tight{margin:4px 0 0;padding-left:20px}
+  ol.tight li{margin:5px 0;line-height:1.6}
+  .item{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:#fcfdfe}
+  .itemhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .itemhead input.nm{flex:1 1 120px;min-width:0;font-weight:600}
+  .itemhead select{flex:0 1 178px;min-width:0;font-size:12.5px}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:8px}
+  .grid4 label{display:block;font-size:11.5px;color:var(--ink3);line-height:1.4}
+  .grid4 input{width:100%;padding:6px 8px;font-size:13px}
+  .warnbox{background:var(--warnbg);border:1px solid #f2d9ad;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#6b3f00}
+  .errbox{background:var(--badbg);border:1px solid #f3c6c2;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#7a1a12}
+  .okbox{background:var(--goodbg);border:1px solid #bfe4d1;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#0b5c3e}
+  .slices{display:grid;grid-template-columns:1fr;gap:8px}
+  .slice{font-size:12.8px;color:var(--ink2);border-left:3px solid var(--line2);padding-left:9px}
+  .slice b{color:var(--ink)}
+  .slice .st{display:block;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .muted{color:var(--ink3)}
+  .sticky{position:sticky;top:14px;max-height:calc(100vh - 24px);overflow-y:auto}
+  .hidden{display:none !important}
+  @media (max-width:1000px){
+    .app{grid-template-columns:minmax(0,1fr)}
+    .sticky{position:static;max-height:none;overflow:visible}
+    table{font-size:12.5px}
+    th,td{padding:6px 7px}
+  }
+  @media (max-width:620px){
+    .app{padding:16px 12px 48px}
+    h1{font-size:22px}
+    .kpi .v{font-size:18px}
+    .grid4{grid-template-columns:repeat(auto-fit,minmax(78px,1fr))}
+    /* 宽表在窄屏下改为定宽 + 容器内横向滚动：列宽稳定，长名称折行而不是独占整行 */
+    #planTable{table-layout:fixed;width:872px}
+    #planTable th:first-child,#planTable td:first-child{width:158px}
+    #planTable th:nth-child(10),#planTable td:nth-child(10){width:92px}
+    #planTable th:nth-child(11),#planTable td:nth-child(11){width:72px}
+    #sensTable{table-layout:fixed;width:790px}
+    #sensTable th:first-child,#sensTable td:first-child{width:186px}
+    #sensTable th:nth-child(9),#sensTable td:nth-child(9){width:92px}
+  }
+  .scrollhint{display:none}
+  @media (max-width:1000px){ .scrollhint{display:inline} }
+  input[type=file]{max-width:100%;min-width:0}
+  .btns > *{min-width:0}
+  @media (max-width:420px){
+    .grid4{grid-template-columns:repeat(2,minmax(0,1fr))}
+    input[type=file]{width:120px;font-size:11px}
+    .row2{grid-template-columns:minmax(0,1fr)}
+    .btns{gap:6px}
+    .btns button{font-size:12px;padding:7px 9px}
+    .seg button{font-size:11.5px;padding:5px 7px}
+    .itemhead select{flex:1 1 100%}
+  }
+  @media print{
+    body{background:#fff}
+    .sticky{position:static;max-height:none;overflow:visible}
+    .app{grid-template-columns:minmax(0,1fr);max-width:none}
+    .no-print{display:none !important}
+    .card{break-inside:avoid;box-shadow:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>景深对账台</h1>
+    <p class="lede">「我想让这一段距离都拍清楚」其实是一笔可以算清的账：给定画幅、焦距、光圈、对焦距离，<b>实际的清晰范围是从几米到几米</b>、超焦距在哪、前后景深各多少、收小光圈到哪一步就没用了（衍射）。反过来——要让 <b>目标区间整段清晰</b>，对焦该放在哪、光圈最小开多大——本页给闭式解并回代验算。</p>
+    <div class="badges">
+      <span class="badge">薄透镜景深公式 + 超焦距 + 艾里斑 + 等效口径，全部可复算</span>
+      <span class="badge">默认 6 个方案是虚构示例</span>
+      <span class="badge">不联网 · 不测量真实镜头 · 不做器材评价</span>
+    </div>
+  </header>
+
+  <div class="sticky">
+    <form id="form" onsubmit="return false">
+      <div class="card">
+        <h2>画幅与清晰口径 <span class="tag">所有方案共用</span></h2>
+        <div class="field">
+          <label>弥散圆口径 <span class="sub">决定「多小算清晰」</span></label>
+          <select id="cocMode"></select>
+        </div>
+        <div class="field cond" id="wrapPx">
+          <label>横向像素数（px）<span class="sub">像素级口径：c = 2 × 画幅宽 ÷ 像素数</span></label>
+          <input type="text" id="cocPx">
+        </div>
+        <div class="field cond" id="wrapCoc">
+          <label>自定义弥散圆 c（mm）</label>
+          <input type="text" id="cocCustom">
+        </div>
+        <div class="row2">
+          <div class="field"><label>波长 λ（nm）<span class="sub">衍射口径</span></label><input type="text" id="lambda"></div>
+          <div class="field"><label>对照画幅 <span class="sub">算等效焦距/等效光圈</span></label><select id="refSensor"></select></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>自定义画幅宽（mm）</label><input type="text" id="csW"></div>
+          <div class="field"><label>自定义画幅高（mm）</label><input type="text" id="csH"></div>
+        </div>
+        <p class="footnote">弥散圆 c 是<b>显示约定，不是物理常数</b>：换口径会直接改变结论，本页把口径和实际 c 值一起显示出来。默认口径「对角线 ÷ 1500」是最常见的那一种。</p>
+      </div>
+
+      <div class="card">
+        <h2>目标区间 <span class="tag gray">你想让哪一段清晰</span></h2>
+        <div class="row2">
+          <div class="field"><label>目标近点（m）</label><input type="text" id="tNear"></div>
+          <div class="field"><label>目标远点（m）</label><input type="text" id="tFar"></div>
+        </div>
+        <div class="field"><label class="chk"><input type="checkbox" id="tFarInf"> 远点取无限远（只关心「从这里到 ∞ 都清晰」）</label></div>
+        <div class="field"><label>反推用焦距（mm）<span class="sub">反推要指定一个镜头</span></label><input type="text" id="solveF"></div>
+        <p class="footnote">目标区间是<b>场景要求</b>，与具体方案无关。反推出的对焦距离 <b>与焦距无关</b>（它是两端点的调和平均），但所需光圈会随焦距增长——下面有一张对照表。</p>
+      </div>
+
+      <div class="card">
+        <h2>方案清单 <span class="tag gray" id="rowCount"></span></h2>
+        <div id="rows"></div>
+        <div class="btns">
+          <button type="button" id="btnAddRow">加一个方案</button>
+          <button type="button" id="btnDup">复制最后一个</button>
+        </div>
+        <p class="footnote">「对焦距离」是<b>相对镜头的物距</b>（薄透镜口径），与镜身上「从像面算起」的刻度有差异，本页不换算。</p>
+      </div>
+
+      <div class="card">
+        <h2>场景</h2>
+        <div class="field"><label>一键换上（会覆盖当前输入）</label><select id="scenario"></select></div>
+        <p class="footnote">场景只改数字。默认、内置场景与页面上所有数字<b>都是虚构示例</b>，不是任何真实器材的实测数据。</p>
+      </div>
+
+      <div class="card no-print">
+        <h2>保存与导出</h2>
+        <div class="btns">
+          <button type="button" class="primary" id="btnSave">保存到本机</button>
+          <button type="button" id="btnLoad">读取本机</button>
+          <button type="button" id="btnReset">恢复默认示例</button>
+        </div>
+        <div class="btns">
+          <button type="button" id="btnCsv">导出 CSV</button>
+          <button type="button" id="btnMd">导出 Markdown</button>
+          <button type="button" id="btnJson">导出 JSON 备份</button>
+          <button type="button" id="btnPng">导出结果卡 PNG</button>
+        </div>
+        <div class="btns">
+          <label class="chk" style="font-size:13px"><span>导入备份</span><input type="file" id="importFile" accept=".json,application/json"></label>
+          <button type="button" id="btnPrint">打印视图</button>
+        </div>
+        <p class="footnote" id="saveState">改动会即时重算；「保存到本机」用的是浏览器本地存储（只在这台机器上）。</p>
+      </div>
+    </form>
+  </div>
+
+  <main>
+    <div class="card">
+      <h2>结论 <span class="tag gray" id="verdictTag"></span></h2>
+      <div id="errors"></div>
+      <div class="concl" id="headline"></div>
+      <div class="kpis" id="kpis" style="margin-top:12px"></div>
+      <div id="warnBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>反推：要让目标区间整段清晰 <span class="tag gray" id="revTag"></span></h2>
+      <div id="reverse"></div>
+    </div>
+
+    <div class="card">
+      <h2>方案对照 <span class="tag gray">点任意一行看详解</span></h2>
+      <div class="tw">
+        <table id="planTable">
+          <thead><tr>
+            <th>方案</th><th>画幅</th><th>焦距</th><th>光圈</th><th>对焦距离</th>
+            <th>超焦距</th><th>近点</th><th>远点</th><th>总景深</th><th>覆盖</th><th>判定</th>
+          </tr></thead>
+          <tbody id="planBody"></tbody>
+        </table>
+      </div>
+      <p class="footnote">「覆盖」比的是<b>目标区间是否整段落在 [近点, 远点] 内</b>。<span id="cocNote"></span> <span class="scrollhint">窄屏下这张表可以左右滑动看完整列。</span></p>
+    </div>
+
+    <div class="card">
+      <h2>选中方案详解 <span class="tag" id="detailName"></span></h2>
+      <div id="detailBody"></div>
+    </div>
+
+    <div class="card">
+      <h2>口径对照 <span class="tag gray">同一份设置换口径/换画幅会怎样</span></h2>
+      <div id="lawBody"></div>
+    </div>
+
+    <div class="card">
+      <h2>值得记住的几条 <span class="tag gray">都能在下面的表里复核</span></h2>
+      <div class="slices" id="insights"></div>
+    </div>
+
+    <div class="card">
+      <h2>敏感性 <span class="tag gray" id="sensOf"></span></h2>
+      <div class="tw"><table id="sensTable">
+        <thead><tr><th>改动</th><th>焦距</th><th>光圈</th><th>对焦距离</th><th>近点</th><th>远点</th><th>总景深</th><th>变化</th><th>覆盖</th></tr></thead>
+        <tbody id="sensBody"></tbody>
+      </table></div>
+      <p class="footnote">每一行都是<b>完整重算</b>过的，不是按比例估算。 <span class="scrollhint">窄屏下这张表可以左右滑动看完整列。</span></p>
+    </div>
+
+    <div class="card">
+      <h2>下一步</h2>
+      <ol class="tight" id="steps"></ol>
+    </div>
+
+    <div class="card">
+      <h2>这份账不算什么</h2>
+      <ul class="tight" id="limits"></ul>
+    </div>
+
+    <div class="card">
+      <h2>结构自检 <span class="tag gray" id="checkTag"></span></h2>
+      <ul class="tight" id="checks"></ul>
+      <p class="footnote">这些是每次重算都会跑的一致性与恒等式检查：对焦在超焦距时近点 = H/2、s = H/3 时前后比 = H : (2H − 3f)、反推回代命中目标、N = N_d 时艾里斑等于弥散圆、等效口径与按 k 缩放的闭式解一致、覆盖判定与近点远点一致、结果里没有 NaN。它们是<b>本页内部一致性</b>的证据，不等于物理结论已被外部实验证实。</p>
+    </div>
+  </main>
+</div>
+<script>/* 景深对账台 · 核心引擎（dof-ledger）
+ *
+ * 问题：我想让这一段距离都拍清楚 —— 对焦该放在哪？光圈最小开多大？再收小还有没有意义？
+ *
+ * 口径（详见 需求与调研.md 第 4 节）：
+ *   D    = √(W² + H²)                     画幅对角线（mm）
+ *   c    = D ÷ divisor                    弥散圆（显示约定，不是物理常数）
+ *   H    = f²/(N·c) + f                   超焦距
+ *   Dn   = s(H − f)/(H + s − 2f)          近点
+ *   Df   = s(H − f)/(H − s)              远点（s ≥ H 时为 ∞）
+ *   前/后景深 = s − Dn / Df − s
+ *   b    = f²/(N(s − f))                  无限远背景的弥散圆直径
+ *   dA   = 2.44·λ·N                       艾里斑第一暗环直径
+ *   N_d  = c/(2.44·λ)                     衍射转折光圈
+ *   k    = 43.2666153 ÷ D                 等效系数（参照全画幅）
+ *
+ * 反推（闭式解）：要让目标区间 [Dn*, Df*] 完整落入景深 ——
+ *   远点有限： s* = 2·Dn*·Df* ÷ (Dn* + Df*)      （调和平均，与 c、N 无关）
+ *              N* = (Df* − Dn*)·s*·f² ÷ (2·c·(s* − f)·Dn*·Df*)
+ *   远点 = ∞： s* = 2·Dn*
+ *              N* = f² / (c·(2·Dn* − f))
+ *
+ * 单位：内部长度一律 mm（对外用 m/cm/mm），λ 用 mm。
+ * 薄透镜理想化：所有距离都是相对镜头的物距；光瞳放大率按 1 处理。
+ */
+(function (root) {
+  'use strict';
+
+  const MM_PER_M = 1000;
+  const DIAG_FF = Math.hypot(36, 24);      // 43.266615305567875
+  const MAX_ROWS = 8;
+  const NAME_MAX = 20;
+
+  const F_MIN = 1, F_MAX = 2000;           // mm
+  const N_MIN = 0.7, N_MAX = 64;           // f/
+  const S_MIN = 0.03, S_MAX = 100000;      // m
+  const LAM_MIN = 380, LAM_MAX = 780;      // nm
+  const TGT_MIN = 0.01, TGT_MAX = 100000;  // m
+  const C_MIN = 0.001, C_MAX = 0.5;        // mm
+  const PX_MIN = 1000, PX_MAX = 20000;
+  const DIM_MIN = 1, DIM_MAX = 300;        // mm（自定义画幅宽/高）
+  const CLOSE_FOCUS_M = 0.1;               // 放大率超过它就提醒近摄偏差
+  /* 等效口径只是 f ≪ s 时的近似：偏差会随「远点 ÷ 对焦距离」放大。
+     实测（默认 6 方案）最大近点偏差 0.57%、最大远点偏差 3.74%，
+     所以允许的相对偏差取 5%，并把这个实测值如实写在页面与报告里。 */
+  const EQUIV_TOL = 0.05;
+  const SOLVE_FS = [16, 24, 35, 50, 85, 135];   // 反推对照用的焦距档
+
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  const fin = (x) => typeof x === 'number' && isFinite(x);
+
+  /* ── 画幅 ────────────────────────────────────────────── */
+  const SENSORS = [
+    { id: 'phone23', name: '1/2.3 英寸（多数手机主摄）', w: 6.17, h: 4.55 },
+    { id: 'phone1', name: '1 英寸（大底手机 / 卡片机）', w: 13.2, h: 8.8 },
+    { id: 'm43', name: 'M4/3（4/3 画幅）', w: 17.3, h: 13.0 },
+    { id: 'apsc_c', name: 'APS-C（佳能 1.6×）', w: 22.3, h: 14.9 },
+    { id: 'apsc', name: 'APS-C（尼康 / 索尼 1.5×）', w: 23.5, h: 15.6 },
+    { id: 'ff', name: '全画幅（36×24）', w: 36, h: 24 },
+    { id: 'mf4433', name: '中画幅 44×33', w: 44, h: 33 },
+    { id: 'custom', name: '自定义画幅尺寸', w: 36, h: 24 }
+  ];
+  const SENSOR_BY_ID = {};
+  SENSORS.forEach((s) => { SENSOR_BY_ID[s.id] = s; });
+
+  function sensorDims(id, custom) {
+    const s = SENSOR_BY_ID[id] || SENSOR_BY_ID.ff;
+    if (s.id === 'custom') {
+      const c = custom || {};
+      return { id: 'custom', name: '自定义画幅（' + fmtNum(c.w, 1) + '×' + fmtNum(c.h, 1) + ' mm）', w: c.w, h: c.h };
+    }
+    return { id: s.id, name: s.name, w: s.w, h: s.h };
+  }
+  function sensorDiag(dims) { return Math.hypot(dims.w, dims.h); }
+
+  /* ── 弥散圆口径 ──────────────────────────────────────── */
+  const COC_MODES = [
+    { id: 'diag1500', name: '对角线 ÷ 1500（常用约定）', divisor: 1500 },
+    { id: 'diag1730', name: '对角线 ÷ 1730（更严格）', divisor: 1730 },
+    { id: 'diag1000', name: '对角线 ÷ 1000（更宽松）', divisor: 1000 },
+    { id: 'pixel', name: '像素级：2 × 像元尺寸', divisor: null },
+    { id: 'custom', name: '自定义弥散圆 c', divisor: null }
+  ];
+  const COC_BY_ID = {};
+  COC_MODES.forEach((m) => { COC_BY_ID[m.id] = m; });
+
+  function cocFor(cocCfg, dims) {
+    const mode = COC_BY_ID[cocCfg.mode] ? cocCfg.mode : 'diag1500';
+    const diag = sensorDiag(dims);
+    if (mode === 'custom') return { mode: mode, c: cocCfg.c, source: '自定义弥散圆 ' + fmtNum(cocCfg.c, 5) + ' mm' };
+    if (mode === 'pixel') {
+      const pitch = dims.w / cocCfg.px;      // mm
+      return { mode: mode, c: 2 * pitch, source: '像素级：2 × 像元 ' + fmtNum(pitch * 1000, 3) + ' µm（' + cocCfg.px + ' px 横向）' };
+    }
+    const m = COC_BY_ID[mode];
+    return { mode: mode, c: diag / m.divisor, source: '对角线 ' + fmtNum(diag, 3) + ' mm ÷ ' + m.divisor };
+  }
+
+  /* ── 默认（虚构示例，页面上必须明说） ───────────────── */
+  const defaults = {
+    coc: { mode: 'diag1500', px: 6000, c: 0.029 },
+    lambda: 550,
+    refSensor: 'ff',
+    solveF: 50,
+    customSensor: { w: 36, h: 24 },
+    target: { near: 2.0, far: 5.0, farInf: false },
+    rows: [
+      { name: '广角 24mm f/8', sensor: 'ff', f: 24, N: 8, s: 3 },
+      { name: '标准 50mm f/2.8', sensor: 'ff', f: 50, N: 2.8, s: 3 },
+      { name: '标准 50mm f/8', sensor: 'ff', f: 50, N: 8, s: 3 },
+      { name: '标准 50mm f/16', sensor: 'ff', f: 50, N: 16, s: 3 },
+      { name: '中长焦 85mm f/4', sensor: 'ff', f: 85, N: 4, s: 4 },
+      { name: '手机主摄 4.3mm f/1.8', sensor: 'phone23', f: 4.3, N: 1.8, s: 1.5 }
+    ]
+  };
+
+  /* 场景：只改数字，改完可由页面「一键换上」；全部为虚构示例 */
+  const scenarios = [
+    { id: 'base', name: '默认·一台全画幅 + 一台手机（虚构）', patch: {} },
+    {
+      id: 'phoneonly', name: '只带手机：想让 1 m 到无限远都清晰',
+      patch: {
+        target: { near: 1, far: 5, farInf: true },
+        coc: { mode: 'diag1500', px: 6000, c: 0.029 },
+        rows: [
+          { name: '手机主摄 4.3mm f/1.8', sensor: 'phone23', f: 4.3, N: 1.8, s: 1.5 },
+          { name: '手机主摄 4.3mm f/4', sensor: 'phone23', f: 4.3, N: 4, s: 1.5 },
+          { name: '手机主摄 4.3mm f/8', sensor: 'phone23', f: 4.3, N: 8, s: 1.5 },
+          { name: '手机长焦 9.5mm f/2.4', sensor: 'phone23', f: 9.5, N: 2.4, s: 1.5 }
+        ]
+      }
+    },
+    {
+      id: 'portrait', name: '人像虚化：85mm f/1.4，只求眼睛清晰（虚构）',
+      patch: {
+        target: { near: 2.9, far: 3.1, farInf: false },
+        rows: [
+          { name: '85mm f/1.4', sensor: 'ff', f: 85, N: 1.4, s: 3 },
+          { name: '85mm f/2.8', sensor: 'ff', f: 85, N: 2.8, s: 3 },
+          { name: '50mm f/1.4', sensor: 'ff', f: 50, N: 1.4, s: 3 }
+        ]
+      }
+    },
+    {
+      id: 'landscape', name: '风光全景深：24mm，目标 1 m 到无限远（虚构）',
+      patch: {
+        target: { near: 1, far: 5, farInf: true },
+        rows: [
+          { name: '24mm f/5.6', sensor: 'ff', f: 24, N: 5.6, s: 2 },
+          { name: '24mm f/8', sensor: 'ff', f: 24, N: 8, s: 2 },
+          { name: '24mm f/11', sensor: 'ff', f: 24, N: 11, s: 2 },
+          { name: '24mm f/16', sensor: 'ff', f: 24, N: 16, s: 2 }
+        ]
+      }
+    },
+    {
+      id: 'macro', name: '近摄：APS-C 100mm f/8，目标 0.48–0.52 m（虚构）',
+      patch: {
+        target: { near: 0.48, far: 0.52, farInf: false },
+        rows: [
+          { name: '100mm f/8 对焦 0.5m', sensor: 'apsc', f: 100, N: 8, s: 0.5 },
+          { name: '100mm f/16 对焦 0.5m', sensor: 'apsc', f: 100, N: 16, s: 0.5 },
+          { name: '100mm f/8 对焦 0.4m', sensor: 'apsc', f: 100, N: 8, s: 0.4 }
+        ]
+      }
+    },
+    {
+      id: 'small', name: '小底衍射对照：手机主摄收到 f/8（虚构）',
+      patch: {
+        target: { near: 1, far: 5, farInf: true },
+        rows: [
+          { name: '4.3mm f/1.8', sensor: 'phone23', f: 4.3, N: 1.8, s: 1.5 },
+          { name: '4.3mm f/4', sensor: 'phone23', f: 4.3, N: 4, s: 1.5 },
+          { name: '4.3mm f/5.6', sensor: 'phone23', f: 4.3, N: 5.6, s: 1.5 },
+          { name: '4.3mm f/8', sensor: 'phone23', f: 4.3, N: 8, s: 1.5 }
+        ]
+      }
+    }
+  ];
+
+  /* ── 格式化 ─────────────────────────────────────────── */
+  function fmtNum(x, d) {
+    if (!fin(x)) return x === Infinity ? '∞' : '—';
+    return x.toFixed(d);
+  }
+  /* 距离：对外一律用 m，极小值转 mm */
+  function fmtDist(m) {
+    if (m === Infinity) return '∞';
+    if (!fin(m)) return '—';
+    const a = Math.abs(m);
+    if (a < 0.1) return fmtNum(m * 1000, 1) + ' mm';
+    if (a < 10) return fmtNum(m, 3) + ' m';
+    if (a < 1000) return fmtNum(m, 2) + ' m';
+    return fmtNum(m, 1) + ' m';
+  }
+  /* 长度：对外用 mm（弥散圆、艾里斑） */
+  function fmtMm(mm) {
+    if (!fin(mm)) return '—';
+    const a = Math.abs(mm);
+    if (a === 0) return '0 mm';
+    if (a < 0.001) {
+      /* 别把「很小但非零」显示成 0.000 —— 那等于说「没有残差」 */
+      return (a * 1000 < 0.0005) ? '< 0.001 µm' : fmtNum(mm * 1000, 3) + ' µm';
+    }
+    if (a < 0.01) return fmtNum(mm, 5) + ' mm';
+    if (a < 1) return fmtNum(mm, 4) + ' mm';
+    if (a < 10) return fmtNum(mm, 3) + ' mm';
+    return fmtNum(mm, 2) + ' mm';
+  }
+  function fmtPct(x, d) { return fin(x) ? fmtNum(x, d === undefined ? 2 : d) + '%' : '—'; }
+
+  /* ── 解析与校验 ─────────────────────────────────────── */
+  function parseNum(v, opt) {
+    const label = opt.label || '数值';
+    let s;
+    if (typeof v === 'number') {
+      if (!isFinite(v)) return { ok: false, msg: label + '必须是有限数字' };
+      s = String(v);
+    } else if (typeof v === 'string') {
+      s = v.replace(/[,\s　]/g, '');
+    } else {
+      return { ok: false, msg: label + '不能为空' };
+    }
+    if (s === '') return { ok: false, msg: label + '不能为空' };
+    if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(s)) return { ok: false, msg: label + '只能填数字（可带小数）' };
+    const x = Number(s);
+    if (!isFinite(x)) return { ok: false, msg: label + '超出可处理范围' };
+    if (opt.min !== undefined && x < opt.min) return { ok: false, msg: label + '不能小于 ' + opt.min };
+    if (opt.max !== undefined && x > opt.max) return { ok: false, msg: label + '不能大于 ' + opt.max };
+    return { ok: true, value: x };
+  }
+  function num(v) { return typeof v === 'number' ? v : Number(String(v).replace(/[,\s　]/g, '')); }
+
+  /* 规范化 + 校验。返回 { ok, cfg, errors, warnings }，不抛异常。 */
+  function normalize(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const errors = [], warnings = [];
+    const cfg = { coc: {}, customSensor: {}, target: {}, rows: [] };
+
+    /* 自定义画幅尺寸（只有用到 custom 时才校验） */
+    const cs = src.customSensor || {};
+    let csOk = true;
+    [['w', cs.w, '自定义画幅宽', DIM_MIN, DIM_MAX],
+     ['h', cs.h, '自定义画幅高', DIM_MIN, DIM_MAX]].forEach(([k, v, label, min, max]) => {
+      const p = parseNum(v === undefined && k === 'w' ? 36 : (v === undefined ? 24 : v), { label: label, min: min, max: max });
+      if (!p.ok) { errors.push({ row: 0, field: 'customSensor.' + k, msg: p.msg }); csOk = false; }
+      else cfg.customSensor[k] = p.value;
+    });
+    if (csOk && cfg.customSensor.w && cfg.customSensor.h) {
+      const dg = Math.hypot(cfg.customSensor.w, cfg.customSensor.h);
+      if (dg < 3) errors.push({ row: 0, field: 'customSensor', msg: '自定义画幅对角线只有 ' + fmtNum(dg, 2) + ' mm，太小' });
+    }
+
+    /* 弥散圆口径 */
+    const cocSrc = src.coc || {};
+    const mode = COC_BY_ID[cocSrc.mode] ? cocSrc.mode : 'diag1500';
+    cfg.coc.mode = mode;
+    if (mode === 'pixel') {
+      const p = parseNum(cocSrc.px, { label: '横向像素数', min: PX_MIN, max: PX_MAX });
+      if (!p.ok) errors.push({ row: 0, field: 'coc.px', msg: p.msg }); else cfg.coc.px = Math.round(p.value);
+    } else if (mode === 'custom') {
+      const p = parseNum(cocSrc.c, { label: '自定义弥散圆 c', min: C_MIN, max: C_MAX });
+      if (!p.ok) errors.push({ row: 0, field: 'coc.c', msg: p.msg + '（单位 mm）' }); else cfg.coc.c = p.value;
+    }
+
+    /* 波长 */
+    const lp = parseNum(src.lambda, { label: '波长 λ', min: LAM_MIN, max: LAM_MAX });
+    if (!lp.ok) errors.push({ row: 0, field: 'lambda', msg: lp.msg + '（单位 nm）' }); else cfg.lambda = lp.value;
+
+    /* 对照画幅 */
+    const ref = SENSOR_BY_ID[src.refSensor] ? src.refSensor : 'ff';
+    cfg.refSensor = ref === 'custom' ? 'ff' : ref;
+
+    /* 反推用的焦距 */
+    const sf = parseNum(src.solveF, { label: '反推用焦距', min: F_MIN, max: F_MAX });
+    if (!sf.ok) errors.push({ row: 0, field: 'solveF', msg: sf.msg + '（单位 mm）' }); else cfg.solveF = sf.value;
+
+    /* 目标区间 */
+    const tg = src.target || {};
+    const np = parseNum(tg.near, { label: '目标近点', min: TGT_MIN, max: TGT_MAX });
+    if (!np.ok) errors.push({ row: 0, field: 'target.near', msg: np.msg + '（单位 m）' }); else cfg.target.near = np.value;
+    cfg.target.farInf = !!tg.farInf;
+    if (cfg.target.farInf) {
+      cfg.target.far = Infinity;
+    } else {
+      const fp = parseNum(tg.far, { label: '目标远点', min: TGT_MIN, max: TGT_MAX });
+      if (!fp.ok) errors.push({ row: 0, field: 'target.far', msg: fp.msg + '（单位 m）' }); else cfg.target.far = fp.value;
+      if (np.ok && fp.ok && fp.value <= np.value) {
+        errors.push({ row: 0, field: 'target.far', msg: '目标远点（' + fp.value + ' m）必须大于目标近点（' + np.value + ' m）；只有一端要清晰的情况，请把近点填成你要的那一端' });
+      }
+    }
+
+    /* 方案清单 */
+    const rows = Array.isArray(src.rows) ? src.rows : [];
+    if (rows.length === 0) errors.push({ row: 0, field: 'rows', msg: '至少要有 1 个方案' });
+    if (rows.length > MAX_ROWS) errors.push({ row: 0, field: 'rows', msg: '最多支持 ' + MAX_ROWS + ' 个方案，当前 ' + rows.length + ' 个' });
+
+    rows.slice(0, MAX_ROWS).forEach((it, i) => {
+      const row = i + 1;
+      const r = {};
+      const name = String((it && it.name) != null ? it.name : '').trim();
+      if (!name) errors.push({ row, field: 'name', msg: '第 ' + row + ' 个方案：名称不能为空' });
+      if (name.length > NAME_MAX) errors.push({ row, field: 'name', msg: '第 ' + row + ' 个方案：名称不能超过 ' + NAME_MAX + ' 字' });
+      r.name = name;
+
+      const sid = it && SENSOR_BY_ID[it.sensor] ? it.sensor : 'ff';
+      r.sensor = sid;
+      r.dims = sensorDims(sid, cfg.customSensor);
+      if (sid === 'custom' && !csOk) { /* 尺寸错误已在上面报过 */ }
+
+      let bad = false;
+      [['f', it && it.f, '焦距', F_MIN, F_MAX],
+       ['N', it && it.N, '光圈 f/', N_MIN, N_MAX],
+       ['s', it && it.s, '对焦距离', S_MIN, S_MAX]].forEach(([k, v, label, min, max]) => {
+        const p = parseNum(v, { label: '第 ' + row + ' 个方案：' + label, min: min, max: max });
+        if (!p.ok) { errors.push({ row, field: k, msg: p.msg + (k === 's' ? '（单位 m）' : '') }); bad = true; }
+        else r[k] = p.value;
+      });
+      if (bad) return;
+
+      if (r.s * MM_PER_M <= r.f) {
+        errors.push({ row, field: 's', msg: '第 ' + row + ' 个方案：对焦距离（' + r.s + ' m）必须大于焦距（' + r.f + ' mm = ' + fmtNum(r.f / 1000, 4) + ' m），否则物不成像' });
+        return;
+      }
+      const mag = r.f / (r.s * MM_PER_M - r.f);        // 放大率
+      r.mag = mag;
+      r.closeFocus = mag > CLOSE_FOCUS_M;
+      cfg.rows.push(r);
+    });
+
+    if (cfg.rows.length === 0 && errors.length === 0) {
+      errors.push({ row: 0, field: 'rows', msg: '没有可用的方案' });
+    }
+
+    if (cfg.target.farInf && cfg.target.near !== undefined) {
+      warnings.push('目标远点取「无限远」：任何有限的远点都必须盖到这里，所以判定按「远点必须是 ∞」算。');
+    }
+    if (cfg.coc.mode === 'custom') warnings.push('弥散圆用的是自定义 c：这个值直接决定「多小算清晰」，是本页唯一的显示约定。');
+    if (cfg.coc.mode === 'pixel') warnings.push('弥散圆按「2 × 像元尺寸」算：这是「像素级清晰」的口径，比常用的对角线÷1500 更严格。');
+    cfg.rows.forEach((r, i) => {
+      const cc = cocFor(cfg.coc, r.dims).c;
+      if (r.N * cc >= r.f) {
+        warnings.push('第 ' + (i + 1) + ' 个方案（' + r.name + '）的 N·c = ' + fmtNum(r.N * cc, 5) +
+          ' mm 已不小于焦距 ' + fmtNum(r.f, 2) + ' mm：超焦距不超过 2f，属于「从很近到无限远几乎都清晰」的退化口径，前后景深的常规直觉不再适用。');
+      }
+      if (r.closeFocus) warnings.push('第 ' + (i + 1) + ' 个方案（' + r.name + '）的放大率约 1:' + fmtNum(1 / r.mag, 2) + '，已进入近摄区间：本页按光瞳放大率 = 1 的标准公式计算，结论偏差可能变大。');
+    });
+
+    if (errors.length) return { ok: false, cfg: cfg, errors: errors, warnings: warnings };
+    return { ok: true, cfg: cfg, errors: [], warnings: warnings };
+  }
+
+  /* ── 单个方案的光学计算（纯函数，单位 mm） ───────────── */
+  /* s 与 H 相等时远点必须是 ∞；浮点下 H 会差最后几位，所以用相对容差判等 */
+  const H_REL_TOL = 1e-12;
+  function optics(f, N, sMm, c, lambdaMm) {
+    const H = f * f / (N * c) + f;
+    const dn = sMm * (H - f) / (H + sMm - 2 * f);
+    const dfInf = sMm >= H * (1 - H_REL_TOL);
+    const df = dfInf ? Infinity : sMm * (H - f) / (H - sMm);
+    const front = sMm - dn;
+    const back = df === Infinity ? Infinity : df - sMm;
+    const total = df === Infinity ? Infinity : df - dn;
+    const blurInf = f * f / (N * (sMm - f));       // 无限远背景的弥散圆直径（mm）
+    const airy = 2.44 * lambdaMm * N;              // 艾里斑第一暗环直径（mm）
+    const nDiff = c / (2.44 * lambdaMm);           // 衍射转折光圈
+    return {
+      H: H, dn: dn, df: df, front: front, back: back, total: total,
+      dfInf: dfInf, blurInf: blurInf, airy: airy, nDiff: nDiff
+    };
+  }
+
+  /* 目标区间覆盖：返回判定与两端缺口（mm） */
+  function coverage(dn, df, nearMm, farMm, farInf) {
+    const gapNear = Math.max(0, dn - nearMm);
+    const gapFar = farInf ? (df === Infinity ? 0 : Infinity) : Math.max(0, farMm - df);
+    let verdict, label;
+    if (gapNear <= 0 && gapFar <= 0) { verdict = 'cover'; label = '覆盖完整'; }
+    else if (gapNear > 0 && gapFar > 0) { verdict = 'both'; label = '两头都不够'; }
+    else if (gapNear > 0) { verdict = 'near'; label = '近端不够'; }
+    else { verdict = 'far'; label = '远端不够'; }
+    return { verdict: verdict, label: label, gapNear: gapNear, gapFar: gapFar, covered: verdict === 'cover' };
+  }
+
+  /* 逐方案完整计算 */
+  function rowResult(r, cfg) {
+    const dims = r.dims;
+    const coc = cocFor(cfg.coc, dims);
+    const c = coc.c;
+    const lambdaMm = cfg.lambda / 1e6;
+    const sMm = r.s * MM_PER_M;
+    const o = optics(r.f, r.N, sMm, c, lambdaMm);
+    const cov = coverage(o.dn, o.df, cfg.target.near * MM_PER_M,
+      cfg.target.far === Infinity ? Infinity : cfg.target.far * MM_PER_M, cfg.target.farInf);
+    const diag = sensorDiag(dims);
+    const refDims = sensorDims(cfg.refSensor, cfg.customSensor);
+    const refDiag = sensorDiag(refDims);
+    const k = refDiag / diag;
+
+    /* 等效口径：同视角 + 同景深地搬到对照画幅；因 f 项不严格相等，如实给出偏差
+       闭式：令 A = cN(s−f)、B = cNf(k−1)，则
+         近点相对偏差 = |B| ÷ (f² + A − B)
+         远点相对偏差 = |B| ÷ |f² − A + B|      （仅在原方案与等效方案的远点都有限时适用） */
+    const fEq = r.f * k, NEq = r.N * k;
+    /* 等效口径下弥散圆必须同比缩放（c′ = c·k）：自定义 c 与像素级口径同样按比例搬过去；
+       对角线÷n 口径下 c′ 恰好等于对照画幅对角线÷n，两种写法一致。 */
+    const cRef = (coc.mode === 'custom' || coc.mode === 'pixel')
+      ? c * k
+      : refDiag / COC_BY_ID[coc.mode].divisor;
+    const oEq = optics(fEq, NEq, sMm, cRef, lambdaMm);
+    /* 等效口径只在「等效后仍能对焦」时才有意义：等效焦距可能已经不小于对焦距离 */
+    const eqValid = sMm > fEq;
+    const eqA = c * r.N * (sMm - r.f);
+    const eqB = c * r.N * r.f * (k - 1);
+    const eqDenNear = r.f * r.f + eqA - eqB;
+    const eqDenFar = r.f * r.f - eqA + eqB;
+    const eqDevNear = !eqValid ? null : (o.dn > 0 ? Math.abs(oEq.dn - o.dn) / o.dn : 0);
+    const eqDevFar = !eqValid ? null
+      : (o.df === Infinity && oEq.df === Infinity) ? 0
+        : (o.df === Infinity || oEq.df === Infinity) ? null
+          : Math.abs(oEq.df - o.df) / o.df;
+    const eqPredNear = !eqValid ? null : Math.abs(eqB) / Math.abs(eqDenNear);
+    const eqPredFar = !eqValid ? null
+      : (o.df === Infinity || oEq.df === Infinity || eqDenFar === 0) ? null
+        : Math.abs(eqB) / Math.abs(eqDenFar);
+    /* 按 k 缩放的闭式解：等效方案的近点/远点必须精确等于它（这是恒等式，用来验算实现） */
+    const eqDnClosed = (fEq > 0 && sMm > fEq) ? r.f * r.f * sMm / eqDenNear : null;
+    const eqDfClosed = (fEq > 0 && sMm > fEq && eqDenFar !== 0) ? r.f * r.f * sMm / eqDenFar : null;
+
+    const frameH = dims.h;
+    return {
+      name: r.name, sensor: r.sensor, sensorName: dims.name,
+      sensorDiag: diag, crop: k,
+      f: r.f, N: r.N, s: r.s, mag: r.mag, closeFocus: r.closeFocus,
+      cocMode: cfg.coc.mode, coc: c, cocSource: coc.source,
+      H: o.H / MM_PER_M, dn: o.dn / MM_PER_M, df: o.df === Infinity ? Infinity : o.df / MM_PER_M,
+      front: o.front / MM_PER_M,
+      back: o.back === Infinity ? Infinity : o.back / MM_PER_M,
+      total: o.total === Infinity ? Infinity : o.total / MM_PER_M,
+      dfInf: o.dfInf,
+      ratioBack: o.back === Infinity ? Infinity : o.back / o.front,
+      frontShare: o.total === Infinity ? null : o.front / o.total,
+      blurInf: o.blurInf, blurPct: o.blurInf / frameH * 100,
+      frameH: frameH,
+      airy: o.airy, nDiff: o.nDiff, diffractionLimited: r.N > o.nDiff,
+      cover: cov.verdict, coverLabel: cov.label, covered: cov.covered,
+      gapNear: cov.gapNear / MM_PER_M,
+      gapFar: cov.gapFar === Infinity ? Infinity : cov.gapFar / MM_PER_M,
+      near: cfg.target.near, far: cfg.target.far === Infinity ? Infinity : cfg.target.far, farInf: cfg.target.farInf,
+      fEq: fEq, NEq: NEq, refSensorName: refDims.name,
+      eqValid: eqValid,
+      eqDn: !eqValid ? null : oEq.dn / MM_PER_M,
+      eqDf: !eqValid ? null : (oEq.df === Infinity ? Infinity : oEq.df / MM_PER_M),
+      eqDnClosed: eqDnClosed === null ? null : eqDnClosed / MM_PER_M,
+      eqDfClosed: eqDfClosed === null ? null : eqDfClosed / MM_PER_M,
+      eqDevNear: eqDevNear, eqDevFar: eqDevFar,
+      eqPredNear: eqPredNear, eqPredFar: eqPredFar,
+      depthNote: cfg.coc.mode
+    };
+  }
+
+  /* ── 反推：让目标区间完整落入景深 ───────────────────── */
+  /* 同一目标区间下，不同焦距各需要多大的最小光圈（s* 与 f 无关，N* 随 f² 增长） */
+  function solveTable(cfg) {
+    const near = cfg.target.near * MM_PER_M;
+    const farInf = cfg.target.farInf;
+    const far = farInf ? Infinity : cfg.target.far * MM_PER_M;
+    const refDims = sensorDims(cfg.refSensor, cfg.customSensor);
+    const coc = cocFor(cfg.coc, cfg.rows.length ? cfg.rows[0].dims : refDims);
+    const c = coc.c;
+    const sStar = farInf ? 2 * near : 2 * near * far / (near + far);
+    const out = [];
+    SOLVE_FS.forEach((f) => {
+      let n = null, why = '';
+      if (sStar - f <= 0) { why = '对焦距离不超过焦距'; }
+      else if (farInf) { n = f * f / (c * (2 * near - f)); }
+      else { n = (far - near) * sStar * f * f / (2 * c * (sStar - f) * near * far); }
+      if (n !== null && !fin(n)) { n = null; why = '算不出有限值'; }
+      let feasible = true;
+      if (n === null) feasible = false;
+      else if (n > N_MAX) { feasible = false; why = '需要 f/' + fmtNum(n, 2) + '，超过上限 f/' + N_MAX; }
+      else if (n < N_MIN) { feasible = false; why = '需要 f/' + fmtNum(n, 3) + '，比 f/' + N_MIN + ' 还大'; }
+      out.push({
+        f: f, sStar: sStar / MM_PER_M, nStar: n, feasible: feasible, why: why,
+        label: feasible ? 'f/' + fmtNum(n, 2) : '做不到'
+      });
+    });
+    return { sStar: sStar / MM_PER_M, rows: out };
+  }
+
+  function solveTarget(cfg, fRef) {
+    const near = cfg.target.near * MM_PER_M;
+    const farInf = cfg.target.farInf;
+    const far = farInf ? Infinity : cfg.target.far * MM_PER_M;
+    const f = fRef;                                   // 用一个参考焦距反推（默认取第一个方案）
+    const refDims = sensorDims(cfg.refSensor, cfg.customSensor);
+    const coc = cocFor(cfg.coc, cfg.rows.length ? cfg.rows[0].dims : refDims);
+    const c = coc.c;
+    const out = {
+      ok: false, feasible: false, reason: '',
+      near: cfg.target.near, far: farInf ? Infinity : cfg.target.far, farInf: farInf,
+      f: f, coc: c, cocSource: coc.source,
+      sStar: null, nStar: null, backDn: null, backDf: null, errNear: null, errFar: null,
+      naive: null
+    };
+
+    let sStar, nStar;
+    if (farInf) {
+      if (2 * near - f <= 0) {
+        out.reason = '目标近点只有 ' + fmtDist(cfg.target.near) + '，而焦距是 ' + fmtNum(f, 1) + ' mm：要让这么近的地方到无限远都清晰，在几何上做不到（需要近点大于 f/2 = ' + fmtDist(f / 2 / MM_PER_M) + '）。';
+        return out;
+      }
+      sStar = 2 * near;
+      nStar = f * f / (c * (2 * near - f));
+    } else {
+      sStar = 2 * near * far / (near + far);
+      if (sStar - f <= 0) {
+        out.reason = '反推出的对焦距离（' + fmtDist(sStar / MM_PER_M) + '）不大于焦距（' + fmtDist(f / MM_PER_M) + '）：这个目标区间在几何上无法同时覆盖。';
+        return out;
+      }
+      nStar = (far - near) * sStar * f * f / (2 * c * (sStar - f) * near * far);
+    }
+
+    out.sStar = sStar / MM_PER_M;
+    out.nStar = nStar;
+
+    if (!fin(nStar) || nStar <= 0) {
+      out.reason = '反推出的光圈不是正数，这个目标区间无法用本页的模型覆盖。';
+      return out;
+    }
+    if (nStar > N_MAX) {
+      out.reason = '需要把光圈收到 f/' + fmtNum(nStar, 2) + '，已经超出本页可处理的上限 f/' + N_MAX + '（现实里也基本没有这样的镜头）：这个目标区间做不到。';
+      return out;
+    }
+    if (nStar < N_MIN) {
+      out.reason = '需要的光圈是 f/' + fmtNum(nStar, 3) + '，比本页下限 f/' + N_MIN + ' 还要快（现实里没有这样的镜头）：这个目标区间太窄了，现实中景深会比你想要的更深，无法把清晰范围「限制」得这么小。';
+      return out;
+    }
+    if (sStar / MM_PER_M < S_MIN || sStar / MM_PER_M > S_MAX) {
+      out.reason = '反推出的对焦距离 ' + fmtDist(out.sStar) + ' 超出本页可处理范围。';
+      return out;
+    }
+
+    out.ok = true;
+    out.feasible = true;
+    const lambdaMm = cfg.lambda / 1e6;
+    const o = optics(f, nStar, sStar, c, lambdaMm);
+    out.backDn = o.dn / MM_PER_M;
+    out.backDf = o.df === Infinity ? Infinity : o.df / MM_PER_M;
+    out.errNear = Math.abs(o.dn - near);
+    out.errFar = farInf ? (o.df === Infinity ? 0 : Infinity)
+      : (o.df === Infinity ? Infinity : Math.abs(o.df - far));
+
+    /* 常见做法对照：对焦在算术中点 */
+    const sNaive = farInf ? near * 2 : (near + far) / 2;
+    const oN = optics(f, nStar, sNaive, c, lambdaMm);
+    const covN = coverage(oN.dn, oN.df, near, far, farInf);
+    out.naive = {
+      s: sNaive / MM_PER_M,
+      dn: oN.dn / MM_PER_M,
+      df: oN.df === Infinity ? Infinity : oN.df / MM_PER_M,
+      cover: covN.verdict, coverLabel: covN.label, covered: covN.covered,
+      gapNear: covN.gapNear / MM_PER_M,
+      gapFar: covN.gapFar === Infinity ? Infinity : covN.gapFar / MM_PER_M
+    };
+    return out;
+  }
+
+  /* ── 「一键采用」用的取整解 ──────────────────────────
+   * 闭式解给出的是实数；填进输入框必须取整。光圈一律**向上**取整（宁深不浅），
+   * 对焦距离取 4 位小数；取整后回代重算并把覆盖判定一起返回——
+   * 按钮给出的设置必须真的满足目标区间，这是本页的可操作性底线。
+   */
+  function applySolve(cfg, f, rowDims) {
+    const rv = solveTarget(cfg, f);
+    if (!rv.ok) return { ok: false, reason: rv.reason };
+    const s = Math.round(rv.sStar * 10000) / 10000;
+    const N = Math.ceil(rv.nStar * 100) / 100;
+    if (N > N_MAX) return { ok: false, reason: '取整后需要 f/' + fmtNum(N, 2) + '，超过本页上限 f/' + N_MAX };
+    if (s * MM_PER_M <= f) return { ok: false, reason: '取整后的对焦距离（' + fmtDist(s) + '）不大于焦距' };
+    const dims = rowDims || (cfg.rows.length ? cfg.rows[0].dims : sensorDims(cfg.refSensor, cfg.customSensor));
+    const c = cocFor(cfg.coc, dims).c;
+    const o = optics(f, N, s * MM_PER_M, c, cfg.lambda / 1e6);
+    const nearMm = cfg.target.near * MM_PER_M;
+    const farMm = cfg.target.far === Infinity ? Infinity : cfg.target.far * MM_PER_M;
+    const cov = coverage(o.dn, o.df, nearMm, farMm, cfg.target.farInf);
+    return {
+      ok: true, f: f, s: s, N: N, sStar: rv.sStar, nStar: rv.nStar,
+      dn: o.dn / MM_PER_M, df: o.df === Infinity ? Infinity : o.df / MM_PER_M,
+      cover: cov.verdict, coverLabel: cov.label, covered: cov.covered,
+      gapNear: cov.gapNear / MM_PER_M,
+      gapFar: cov.gapFar === Infinity ? Infinity : cov.gapFar / MM_PER_M
+    };
+  }
+
+  /* ── 两条恒等式（独立于方案清单，用第一个方案的 f/N/c 演示） ── */
+  function laws(cfg) {
+    const r0 = cfg.rows[0];
+    const dims = r0.dims;
+    const c = cocFor(cfg.coc, dims).c;
+    const lambdaMm = cfg.lambda / 1e6;
+    const f = r0.f, N = r0.N;
+
+    /* ① 对焦在超焦距：近点 = H/2、远点 = ∞ */
+    const oH = optics(f, N, 0, c, lambdaMm);
+    const H = oH.H;
+    const o = optics(f, N, H, c, lambdaMm);
+
+    /* ② 对焦在 H/3：前 : 后 = H : (2H − 3f)，前段占总景深 H/(3(H−f)) */
+    const s3 = H / 3;
+    const o3 = optics(f, N, s3, c, lambdaMm);
+    const predRatio = (2 * H - 3 * f) / H;
+    const predShare = H / (3 * (H - f));
+
+    /* 对焦位置口径对照：同一个 H，把对焦放在 H、H/2、H/3 上各得到什么 */
+    const compare = [{ mult: 1, label: '对焦在超焦距 H' }, { mult: 0.5, label: '对焦在 H ÷ 2' }, { mult: 1 / 3, label: '对焦在 H ÷ 3' }]
+      .map((x) => {
+        const o = optics(f, N, H * x.mult, c, lambdaMm);
+        return {
+          label: x.label, mult: x.mult, s: H * x.mult / MM_PER_M,
+          dn: o.dn / MM_PER_M, df: o.df === Infinity ? Infinity : o.df / MM_PER_M,
+          total: o.total === Infinity ? Infinity : o.total / MM_PER_M,
+          dfInf: o.dfInf
+        };
+      });
+
+    return {
+      f: f, N: N, c: c, H: H / MM_PER_M, sensorName: dims.name, lambda: cfg.lambda,
+      compare: compare,
+      hyper: {
+        s: H / MM_PER_M,
+        dn: o.dn / MM_PER_M,
+        halfH: H / 2 / MM_PER_M,
+        dfInf: o.df === Infinity,
+        relErrDn: Math.abs(o.dn - H / 2) / (H / 2)
+      },
+      third: {
+        s: s3 / MM_PER_M,
+        dn: o3.dn / MM_PER_M, df: o3.df / MM_PER_M,
+        front: o3.front / MM_PER_M, back: o3.back / MM_PER_M,
+        total: o3.total / MM_PER_M,
+        ratioBack: o3.back / o3.front,
+        predRatioBack: predRatio,
+        share: o3.front / o3.total,
+        predShare: predShare
+      }
+    };
+  }
+
+  /* ── 敏感性（对第 idx 个方案，逐行完整重算） ─────────── */
+  function sensitivity(cfg, idx) {
+    const r = cfg.rows[idx === undefined ? 0 : idx] || cfg.rows[0];
+    const dims = r.dims;
+    const c = cocFor(cfg.coc, dims).c;
+    const lambdaMm = cfg.lambda / 1e6;
+    const nearMm = cfg.target.near * MM_PER_M;
+    const farMm = cfg.target.far === Infinity ? Infinity : cfg.target.far * MM_PER_M;
+    const base = optics(r.f, r.N, r.s * MM_PER_M, c, lambdaMm);
+    const out = [];
+    const push = (label, f, N, sM, note) => {
+      if (sM * MM_PER_M <= f) { out.push({ label: label, invalid: true, note: note || '对焦距离不大于焦距，算不出来' }); return; }
+      const o = optics(f, N, sM * MM_PER_M, c, lambdaMm);
+      const cov = coverage(o.dn, o.df, nearMm, farMm, cfg.target.farInf);
+      out.push({
+        label: label, invalid: false, f: f, N: N, s: sM,
+        H: o.H / MM_PER_M, dn: o.dn / MM_PER_M,
+        df: o.df === Infinity ? Infinity : o.df / MM_PER_M,
+        total: o.total === Infinity ? Infinity : o.total / MM_PER_M,
+        deltaTotal: (o.total === Infinity || base.total === Infinity) ? null : (o.total - base.total) / MM_PER_M,
+        cover: cov.verdict, coverLabel: cov.label, covered: cov.covered,
+        note: note || ''
+      });
+    };
+    const SQ = Math.SQRT2;
+    push('基准（原样）', r.f, r.N, r.s);
+    push('焦距 −20%', r.f * 0.8, r.N, r.s);
+    push('焦距 +20%', r.f * 1.2, r.N, r.s);
+    push('光圈开大一档（÷√2 = f/' + fmtNum(Math.max(r.N / SQ, N_MIN), 2) + '）', r.f, Math.max(r.N / SQ, N_MIN), r.s);
+    push('光圈收小一档（×√2 = f/' + fmtNum(Math.min(r.N * SQ, N_MAX), 2) + '）', r.f, Math.min(r.N * SQ, N_MAX), r.s);
+    push('对焦距离 −20%', r.f, r.N, r.s * 0.8);
+    push('对焦距离 +20%', r.f, r.N, r.s * 1.2);
+    push('搬到全画幅（焦距、光圈不变）', r.f, r.N, r.s, '这一步只换画幅，焦距与光圈都不变');
+    push('搬到 1/2.3 英寸（焦距、光圈不变）', r.f, r.N, r.s, '这一步只换画幅，焦距与光圈都不变');
+    return out;
+  }
+
+  /* 把某个方案搬到指定画幅（用于敏感性与等效验证） */
+  function moveToSensor(r, cfg, sensorId, scaleF, scaleN) {
+    const dims = sensorDims(sensorId, cfg.customSensor);
+    const c = cocFor(cfg.coc, dims).c;
+    const lambdaMm = cfg.lambda / 1e6;
+    const f = r.f * (scaleF || 1), N = r.N * (scaleN || 1);
+    const sMm = r.s * MM_PER_M;
+    if (sMm <= f) return null;
+    return optics(f, N, sMm, c, lambdaMm);
+  }
+
+  /* ── 值得记住的几条（数字全部来自同一次计算） ────────── */
+  /* 等效口径偏差的说明文字：null 表示「等效后无法对焦，不可比较」 */
+  function defDevText(x) {
+    const pn = x.eqDevNear === null ? null : fmtPct(x.eqDevNear * 100, 3);
+    const pf = x.eqDevFar === null ? null : fmtPct(x.eqDevFar * 100, 3);
+    if (pn === null && pf === null) {
+      return '把该方案按等效焦距/等效光圈搬到' + x.refSensorName + '后，等效焦距（' +
+        fmtNum(x.fEq, 1) + 'mm）已经不小于对焦距离（' + fmtDist(x.s) + '），等效相机在这个距离上无法对焦，' +
+        '所以这一项的偏差不可比较——等效口径只在 f ≪ s 时才有意义。';
+    }
+    return '把该方案按等效焦距/等效光圈搬到' + x.refSensorName + '重算，近点相差 ' + (pn === null ? '不可比较' : pn) +
+      '、远点相差 ' + (pf === null ? '不可比较（一边的远点是 ∞）' : pf) +
+      '（闭式预测与此一致，见结构自检）：等效只是 f ≪ s 时的近似，不是恒等式，偏差会随「远点 ÷ 对焦距离」放大。';
+  }
+
+  function buildInsights(cfg, rows, rev, law) {
+    const out = [];
+    const r0 = rows[0];
+    const covered = rows.filter((x) => x.covered).length;
+
+    /* ① 超焦距恒等式 */
+    out.push({
+      key: 'hyper',
+      title: '对焦在超焦距时，近点恰好是超焦距的一半、远点是无限远',
+      body: '以第 1 个方案（' + r0.sensorName + '、' + fmtNum(law.f, 1) + 'mm、f/' + fmtNum(law.N, 1) +
+        '）为例：超焦距 H = ' + fmtDist(law.H) + '，把对焦距离放到 H 上，近点算得 ' + fmtDist(law.hyper.dn) +
+        '，而 H ÷ 2 = ' + fmtDist(law.hyper.halfH) + '，两者相对差 ' + law.hyper.relErrDn.toExponential(2) +
+        '；远点在这一支公式里直接变成 ∞。这条与 f、N、c 都无关，是公式本身的结构。'
+    });
+
+    /* ② 前 1/3 后 2/3 的精确条件 */
+    const t = law.third;
+    out.push({
+      key: 'third',
+      title: '「前 1/3 后 2/3」不是通用法则，只在「对焦距离 = 超焦距 ÷ 3」时成立',
+      body: '同一个方案，若对焦距离取 H ÷ 3 = ' + fmtDist(t.s) + '，算得前景深 ' + fmtDist(t.front) +
+        '、后景深 ' + fmtDist(t.back) + '，前后比 1 : ' + fmtNum(t.ratioBack, 4) +
+        '（精确式是 H : (2H − 3f) = 1 : ' + fmtNum(t.predRatioBack, 4) + '），前段占总景深 ' +
+        fmtPct(t.share * 100, 3) + '（不是 33.333%）。本页默认那 6 个方案的实际前后比各不相同（见下表），' +
+        '所以「前 1/3 后 2/3」只能当口语，不能当尺子。'
+    });
+
+    /* ③ 衍射转折光圈随画幅变化 */
+    const nd = rows.map((x) => x.nDiff);
+    out.push({
+      key: 'diff',
+      title: '收小光圈的收益有上限：衍射转折光圈随画幅急剧变化',
+      body: rows.map((x) => x.name + '（' + x.sensorName + '）N_d ≈ f/' + fmtNum(x.nDiff, 2) +
+        (x.diffractionLimited ? ' —— 当前 f/' + fmtNum(x.N, 1) + ' **已经越过**这条线' : '')).join('；') +
+        '。判据是艾里斑第一暗环直径 2.44λN（λ = ' + cfg.lambda + ' nm）追上弥散圆 c：越过以后，' +
+        '再收光圈换来的景深会被衍射抹掉，画面上不会更清晰。'
+    });
+
+    /* ④ 等效口径 */
+    const ph = rows.filter((x) => x.sensor === 'phone23')[0];
+    if (ph) {
+      const devTxt = defDevText(ph);
+      out.push({
+        key: 'equiv',
+        title: '小底「f/1.8」和大底「f/1.8」不是一回事：等效光圈差一个画幅系数',
+        body: ph.name + ' 的 ' + fmtNum(ph.f, 1) + 'mm f/' + fmtNum(ph.N, 1) + '（' + ph.sensorName +
+          '，等效系数 ' + fmtNum(ph.crop, 3) + '）在视角与景深上相当于' + ph.refSensorName + '的 ' +
+          fmtNum(ph.fEq, 1) + 'mm f/' + fmtNum(ph.NEq, 2) + '。所以它的景深比全画幅 f/8 还深——' +
+          '不是因为手机更强，是画幅决定了景深口径。' + devTxt
+      });
+    }
+
+    /* ⑤ 反推与「对焦在中点」的差别 */
+    if (rev.ok) {
+      const relNear = rev.errNear / (rev.near * MM_PER_M);
+      const relFar = rev.farInf ? 0 : rev.errFar / (rev.far * MM_PER_M);
+      let s = '目标区间 ' + fmtDist(rev.near) + ' – ' + (rev.farInf ? '∞' : fmtDist(rev.far)) +
+        '，用 ' + fmtNum(rev.f, 1) + 'mm 镜头时，闭式反推给出：对焦在 ' + fmtDist(rev.sStar) +
+        '、光圈收到 f/' + fmtNum(rev.nStar, 2) + '。回代重算得到的近点/远点是 ' + fmtDist(rev.backDn) + ' / ' +
+        fmtDist(rev.backDf) + '，与目标相差 ' + fmtDist(rev.errNear / MM_PER_M) + ' / ' +
+        (rev.errFar === Infinity ? '∞' : fmtDist(rev.errFar / MM_PER_M)) +
+        '（相对差 ' + relNear.toExponential(2) + ' / ' + (rev.farInf ? '—' : relFar.toExponential(2)) + '，属浮点噪声）。';
+      if (rev.naive) {
+        s += '常见做法是「对焦在区间中点」' + fmtDist(rev.naive.s) + '：在同一个 f/' + fmtNum(rev.nStar, 2) +
+          ' 下实际近点是 ' + fmtDist(rev.naive.dn) + '、远点是 ' + fmtDist(rev.naive.df) +
+          '，判定为「' + rev.naive.coverLabel + '」，近端差 ' + fmtDist(rev.naive.gapNear) + '。两个端点到镜头的距离要用调和平均，不是算术平均。';
+      }
+      out.push({ key: 'reverse', title: '要让目标区间整段清晰：对焦位置取调和平均，光圈取闭式解', body: s });
+
+      /* 同一区间、不同焦距需要的最小光圈 */
+      if (rev.table) {
+        const t = rev.table;
+        out.push({
+          key: 'solvef',
+          title: '同一段目标区间，焦距越长需要的光圈越离谱（对焦位置却不变）',
+          body: '目标区间不变时，反推出的对焦距离 s* = ' + fmtDist(t.sStar) +
+            ' 与焦距无关（它是两端点的调和平均），但所需光圈随 f² 增长：' +
+            t.rows.map((x) => fmtNum(x.f, 0) + 'mm → ' + (x.feasible ? 'f/' + fmtNum(x.nStar, 2) : '做不到（' + x.why + '）')).join('；') +
+            '。所以「想让这一段都清晰」这件事，广角几乎不用收光圈，长焦要收到衍射已经吃掉画质的地方也未必够。'
+        });
+      }
+    } else if (rev.reason) {
+      out.push({ key: 'reverse', title: '目标区间在本次设置下无法达成', body: rev.reason });
+    }
+
+    out.push({
+      key: 'cover',
+      title: '本次 ' + rows.length + ' 个方案里有 ' + covered + ' 个能整段覆盖目标区间',
+      body: rows.map((x) => x.name + '：' + x.coverLabel +
+        (x.covered ? '（近点 ' + fmtDist(x.dn) + '、远点 ' + fmtDist(x.df) + '）'
+          : '（近端差 ' + (x.gapNear > 0 ? fmtDist(x.gapNear) : '0') + '、远端差 ' +
+            (x.gapFar === Infinity ? '∞' : fmtDist(x.gapFar)) + '）')).join('；') +
+        '。覆盖判定只比「目标区间是否整段落在 [近点, 远点] 内」，不评价画质好坏。'
+    });
+    return out;
+  }
+
+  /* ── 结构自检（每次重算都跑） ───────────────────────── */
+  function verify(res) {
+    const out = [];
+    const cfg = res.cfg, rows = res.rows, law = res.laws;
+    const r0 = cfg.rows[0];
+    const dims = r0.dims;
+    const c = cocFor(cfg.coc, dims).c;
+    const lam = cfg.lambda / 1e6;
+
+    /* 1 超焦距恒等式 */
+    out.push({
+      ok: law.hyper.relErrDn < 1e-9 && law.hyper.dfInf,
+      msg: '对焦在超焦距时近点 = H/2（相对误差 < 1e-9）且远点 = ∞',
+      extra: '相对误差 ' + law.hyper.relErrDn.toExponential(3)
+    });
+
+    /* 2 s ≥ H ⟺ 远点 = ∞；目标远点是 ∞ 当且仅当勾了「远点取无限远」 */
+    out.push({
+      ok: rows.every((x) => x.dfInf === (x.s >= x.H * (1 - H_REL_TOL))) &&
+        rows.every((x) => (x.far === Infinity) === x.farInf),
+      msg: 's ≥ H 与「远点 = ∞」互相等价；目标远点为 ∞ 当且仅当勾了「远点取无限远」',
+      extra: rows.map((x) => (x.dfInf === (x.s >= x.H * (1 - H_REL_TOL))) ? '' : x.name).filter(Boolean).join(',')
+    });
+
+    /* 3 近点 < 对焦距离 < 远点；且前后比只在远点有限时是有限值 */
+    out.push({
+      ok: rows.every((x) => x.dn < x.s && (x.dfInf || x.df > x.s) &&
+        (x.dfInf ? x.ratioBack === Infinity : x.ratioBack > 0 && fin(x.ratioBack))),
+      msg: '近点 < 对焦距离 < 远点；前后比只在远点有限时是有限正数',
+      extra: ''
+    });
+
+    /* 4 收小光圈总景深不减 */
+    out.push({
+      ok: rows.every((x) => {
+        const o1 = optics(x.f, x.N, x.s * MM_PER_M, x.coc, lam);
+        const o2 = optics(x.f, x.N * 2, x.s * MM_PER_M, x.coc, lam);
+        if (o1.total === Infinity) return true;
+        if (o2.total === Infinity) return true;
+        return o2.total >= o1.total - 1e-9;
+      }),
+      msg: '光圈收小（N × 2）总景深不减',
+      extra: ''
+    });
+
+    /* 5 焦距增大总景深减小（同为有限远点时） */
+    out.push({
+      ok: rows.every((x) => {
+        for (const k of [1.2, 1.5]) {
+          const o1 = optics(x.f, x.N, x.s * MM_PER_M, x.coc, lam);
+          const o2 = optics(x.f * k, x.N, x.s * MM_PER_M, x.coc, lam);
+          if (o1.total === Infinity || o2.total === Infinity) continue;
+          if (!(o2.total <= o1.total + 1e-9)) return false;
+        }
+        return true;
+      }),
+      msg: '焦距变长（×1.2 / ×1.5）总景深不增',
+      extra: ''
+    });
+
+    /* 6 对焦距离推远时近点的走向：dDn/ds 的符号 = sign(H − 2f) = sign(f − N·c)
+         常规镜头 f ≫ N·c，所以近点随对焦距离单调变远；N·c ≥ f 时反而是反向的 */
+    let monoOK = true, monoDir = 0, monoDeg = 0;
+    rows.forEach((x) => {
+      const o1 = optics(x.f, x.N, x.s * MM_PER_M, x.coc, lam);
+      const o2 = optics(x.f, x.N, x.s * MM_PER_M * 1.2, x.coc, lam);
+      const cond = x.f > x.N * x.coc;                 // 等价于 H > 2f
+      const wantUp = cond;
+      if (cond) monoDir++; else monoDeg++;
+      /* 用相对容差：退化组里 s ≫ H，近点几乎不随对焦距离变化，差值落在舍入噪声量级 */
+      const tol = 1e-7 * (Math.abs(o1.dn) + Math.abs(o2.dn));
+      const notDown = o2.dn >= o1.dn - tol;
+      const notUp = o2.dn <= o1.dn + tol;
+      if (wantUp ? !notDown : !notUp) monoOK = false;
+    });
+    out.push({
+      ok: monoOK,
+      msg: '对焦距离推远（×1.2）时近点的走向与 f > N·c 一致（f > N·c 时不移近，否则不移远）',
+      extra: '常规组 ' + monoDir + ' 个、退化组（N·c ≥ f）' + monoDeg + ' 个'
+    });
+
+    /* 7 反推回代 */
+    const rev = res.reverse;
+    out.push({
+      ok: !rev.ok ? true : (rev.errNear / (rev.near * MM_PER_M) < 1e-9 &&
+        (rev.farInf ? rev.backDf === Infinity : rev.errFar / (rev.far * MM_PER_M) < 1e-9)),
+      msg: '反推结果回代重算后与目标一致（相对误差 < 1e-9）',
+      extra: rev.ok ? ('近点相对差 ' + (rev.errNear / (rev.near * MM_PER_M)).toExponential(2)) : '本次不可行，跳过'
+    });
+
+    /* 8 s = H/3 的精确前后比 */
+    out.push({
+      ok: Math.abs(law.third.ratioBack - law.third.predRatioBack) < 1e-12 &&
+        Math.abs(law.third.share - law.third.predShare) < 1e-12,
+      msg: 's = H/3 时前后比 = H : (2H − 3f)、前段占比 = H/(3(H−f))（相对误差 < 1e-12）',
+      extra: '实际 1:' + fmtNum(law.third.ratioBack, 6) + ' 预期 1:' + fmtNum(law.third.predRatioBack, 6)
+    });
+
+    /* 9 衍射判据：N = N_d 时艾里斑 = 弥散圆 */
+    out.push({
+      ok: rows.every((x) => Math.abs(2.44 * lam * x.nDiff - x.coc) < 1e-15),
+      msg: 'N = N_d 时艾里斑直径恰好等于弥散圆 c',
+      extra: ''
+    });
+
+    /* 10 等效口径：等效方案自己的近点/远点必须精确等于「按 k 缩放的闭式解」
+         即 dn' = f²s ÷ (f² + A − B)、df' = f²s ÷ (f² − A + B)。
+         直接比这两个量（而不是比两个几乎相等之差的比值），避免灾难性相消。 */
+    const eqBad = [];
+    let eqCmp = 0;
+    rows.forEach((x) => {
+      if (x.eqDnClosed === null || x.eqDn === null) return;
+      eqCmp++;
+      if (!(Math.abs(x.eqDn - x.eqDnClosed) <= 1e-9 * Math.abs(x.eqDnClosed))) eqBad.push(x.name + '(近点)');
+      if (x.eqDfClosed !== null && x.eqDf !== null && x.eqDf !== Infinity) {
+        eqCmp++;
+        if (!(Math.abs(x.eqDf - x.eqDfClosed) <= 1e-9 * Math.abs(x.eqDfClosed))) eqBad.push(x.name + '(远点)');
+      }
+    });
+    const nearDevs = rows.map((x) => x.eqDevNear).filter((v) => fin(v));
+    const farDevs = rows.map((x) => x.eqDevFar).filter((v) => fin(v));
+    out.push({
+      ok: eqBad.length === 0,
+      msg: '等效方案（f·k, N·k, c·k）自己的近点/远点 = 按 k 缩放的闭式解（相对误差 ≤ 1e-9，共比对 ' + eqCmp + ' 项）',
+      extra: eqBad.length ? ('不一致：' + eqBad.join(',')) :
+        ('实测最大近点偏差 ' + (nearDevs.length ? fmtPct(Math.max.apply(null, nearDevs) * 100, 3) : '无') +
+          '、最大远点偏差 ' + (farDevs.length ? fmtPct(Math.max.apply(null, farDevs) * 100, 3) : '无'))
+    });
+
+    /* 11 覆盖判定与近点/远点一致（构造四种情形逐一验证） */
+    out.push({
+      ok: (function () {
+        const cases = [
+          [1, 2, 3, 10, false, 'cover'],     // dn=1 ≤2, df=10 ≥3
+          [5, 2, 3, 10, false, 'near'],      // dn=5 >2
+          [1, 2, 3, 2.5, false, 'far'],      // df=2.5 <3
+          [5, 2, 3, 2.5, false, 'both'],
+          [1, 2, 3, Infinity, false, 'cover'],
+          [1, 2, 3, 10, true, 'far']         // 目标远点 ∞ 但实际远点有限
+        ];
+        return cases.every((cs) => coverage(cs[0], cs[3], cs[1], cs[4] ? Infinity : cs[2], cs[4]).verdict === cs[5]);
+      })(),
+      msg: '覆盖判定（全覆盖 / 近端 / 远端 / 两头）与近点、远点的大小关系一致',
+      extra: ''
+    });
+
+    /* 12 输出契约：没有 NaN / undefined；∞ 只允许出现在远点/后景深/总景深/远端缺口 */
+    const allowInf = { df: 1, back: 1, total: 1, gapFar: 1, errFar: 1, ratioBack: 1, far: 1, backDf: 1, eqDf: 1, eqDfClosed: 1 };
+    const bads = [];
+    (function walk(o, path) {
+      if (o === null || o === undefined) { if (o === undefined) bads.push(path); return; }
+      const t = typeof o;
+      if (t === 'number') {
+        if (Number.isNaN(o)) bads.push(path + '(NaN)');
+        else if (o === Infinity || o === -Infinity) {
+          const key = path.split('.').pop().split('[')[0];
+          if (!allowInf[key]) bads.push(path + '(Infinity)');
+        }
+        return;
+      }
+      if (t !== 'object') return;
+      if (Array.isArray(o)) { o.forEach((v, i) => walk(v, path + '[' + i + ']')); return; }
+      Object.keys(o).forEach((k) => walk(o[k], path + '.' + k));
+    })({ rows: rows, laws: law, reverse: rev }, 'res');
+    out.push({ ok: bads.length === 0, msg: '结果里没有 NaN / undefined，∞ 只出现在允许的字段上', extra: bads.slice(0, 4).join(', ') });
+
+    /* 13 确定性：同输入两次逐字节一致 */
+    const a = JSON.stringify(res.rows), b = JSON.stringify(rows);
+    out.push({ ok: a === b, msg: '同一份输入两次计算结果一致', extra: '' });
+
+    return out.map((x) => ({ ok: !!x.ok, msg: x.msg, extra: x.extra || '' }));
+  }
+
+  /* ── 主入口 ─────────────────────────────────────────── */
+  function analyze(raw) {
+    const nz = normalize(raw);
+    if (!nz.ok) return { ok: false, cfg: nz.cfg, errors: nz.errors, warnings: nz.warnings, rows: [], checks: [] };
+    const cfg = nz.cfg;
+    const rows = cfg.rows.map((r) => rowResult(r, cfg));
+    const law = laws(cfg);
+    const rev = solveTarget(cfg, cfg.solveF);
+    rev.table = solveTable(cfg);
+    const res = {
+      ok: true, cfg: cfg, warnings: nz.warnings, errors: [],
+      rows: rows, laws: law, reverse: rev,
+      sensitivity: sensitivity(cfg, 0),
+      insights: [], checks: []
+    };
+    res.insights = buildInsights(cfg, rows, rev, law);
+    res.checks = verify(res);
+    return res;
+  }
+
+  /* 页面上「这份账不算什么」的固定清单（UI 与导出共用） */
+  const LIMITS = [
+    '只做几何光学：不建模镜头像差、场曲、真实分辨率（MTF）、呼吸效应、浮动对焦、变焦头实际焦距漂移、机身防抖与快门运动模糊——「清晰」的另一半（运动与像差）不在本页。',
+    '薄透镜理想化：所有距离都是相对镜头的物距；与「从像面算起」的镜身刻度存在差异，本页不换算。',
+    '光瞳放大率按 1 处理：标准景深公式的形式假设入/出瞳对称。放大率超过 0.1（约 1:10）时会给出近摄提醒，1:1 以上的结论偏差可能明显。',
+    '弥散圆 c 是显示约定，不是物理常数：换口径（对角线÷1500 与 ÷1730）会直接改变结论，本页不宣称哪一个是标准。',
+    '不处理移轴 / 倾角镜头（沙姆弗鲁格）、焦点合成与景深堆栈、拼接；不处理滤镜、T 值差异、机身与镜头组合的个体差异。',
+    '不测量任何真实镜头、不联网、不查镜头或相机参数；不判断「这套设置拍得好不好」，不做器材评价或购买建议。',
+    '衍射判据只比较艾里斑与弥散圆的大小，不是完整的 MTF 分析：越过衍射转折光圈不等于「不能拍」，只表示再收光圈不会更清晰。',
+    '目标近点离镜头过近（反推对焦距离 ≤ 焦距）或所需光圈超出 f/0.7–f/64 时判不可行并说明原因，不硬凑一个数。',
+    '覆盖判定只比「目标区间是否整段落在 [近点, 远点] 内」，是显示分组，不是画质评级。',
+    '默认样例、6 个内置场景与页面上所有数字都是虚构示例，不是任何真实器材的实测数据。'
+  ];
+
+  const api = {
+    DIAG_FF: DIAG_FF, MAX_ROWS: MAX_ROWS, NAME_MAX: NAME_MAX,
+    F_MIN: F_MIN, F_MAX: F_MAX, N_MIN: N_MIN, N_MAX: N_MAX,
+    S_MIN: S_MIN, S_MAX: S_MAX, LAM_MIN: LAM_MIN, LAM_MAX: LAM_MAX,
+    TGT_MIN: TGT_MIN, TGT_MAX: TGT_MAX, C_MIN: C_MIN, C_MAX: C_MAX,
+    PX_MIN: PX_MIN, PX_MAX: PX_MAX, DIM_MIN: DIM_MIN, DIM_MAX: DIM_MAX,
+    CLOSE_FOCUS_M: CLOSE_FOCUS_M, EQUIV_TOL: EQUIV_TOL, MM_PER_M: MM_PER_M,
+    SENSORS: SENSORS, COC_MODES: COC_MODES, SENSOR_BY_ID: SENSOR_BY_ID, COC_BY_ID: COC_BY_ID,
+    defaults: defaults, scenarios: scenarios, LIMITS: LIMITS,
+    parseNum: parseNum, num: num, normalize: normalize, analyze: analyze, verify: verify,
+    optics: optics, coverage: coverage, solveTarget: solveTarget, solveTable: solveTable,
+    applySolve: applySolve, laws: laws,
+    sensitivity: sensitivity, moveToSensor: moveToSensor,
+    sensorDims: sensorDims, sensorDiag: sensorDiag, cocFor: cocFor,
+    fmtNum: fmtNum, fmtDist: fmtDist, fmtMm: fmtMm, fmtPct: fmtPct,
+    r2: r2, r3: r3, r4: r4,
+    defaultsClone: function () { return JSON.parse(JSON.stringify(defaults)); }
+  };
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.AppCore = api;
+})(typeof window !== 'undefined' ? window : null);
+</script>
+<script>/* 景深对账台 · 界面（dof-ledger）
+ * 依赖 window.AppCore（core.js）。所有展示数字都来自同一次 analyze() 的结果。
+ */
+(function () {
+  'use strict';
+  const C = window.AppCore;
+  const $ = (id) => document.getElementById(id);
+  const STORE_KEY = 'dof-ledger:v1';
+
+  const state = { res: null, checks: [], errors: [], warnings: [], sel: 0, exportCount: 0, renders: 0 };
+
+  /* ── 格式化 ───────────────────────────────────────── */
+  const D = (m) => C.fmtDist(m);                  // 距离（对外 m，极小值 mm）
+  const L = (mm) => C.fmtMm(mm);                  // 长度（mm/µm）
+  const P2 = (x) => C.fmtPct(x, 2);
+  const P3 = (x) => C.fmtPct(x, 3);
+  const N2 = (x) => (isFinite(x) ? (Math.round(x * 100) / 100).toFixed(2) : '—');
+  const N1 = (x) => (isFinite(x) ? (Math.round(x * 10) / 10).toFixed(1) : '—');
+  const N3 = (x) => (isFinite(x) ? (Math.round(x * 1000) / 1000).toFixed(3) : '—');
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const F = (x) => 'f/' + (isFinite(x) ? (Math.round(x * 100) / 100).toFixed(2) : '—');
+  const PILL = { cover: 'ok', near: 'tight', far: 'tight', both: 'fail' };
+  const pillHTML = (cov, label) => '<span class="pill ' + PILL[cov] + '">' + esc(label) + '</span>';
+
+  function toast(msg) {
+    let t = $('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:#161b22;color:#fff;padding:9px 16px;border-radius:999px;font-size:13px;z-index:99;opacity:0;transition:opacity .18s';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._h);
+    t._h = setTimeout(function () { t.style.opacity = '0'; }, 1900);
+  }
+
+  /* ── 下拉与表单 ───────────────────────────────────── */
+  function fillSelects() {
+    $('cocMode').innerHTML = C.COC_MODES.map(function (m) {
+      return '<option value="' + m.id + '">' + esc(m.name) + '</option>';
+    }).join('');
+    $('refSensor').innerHTML = C.SENSORS.filter(function (s) { return s.id !== 'custom'; }).map(function (s) {
+      return '<option value="' + s.id + '">' + esc(s.name) + '</option>';
+    }).join('');
+    $('scenario').innerHTML = '<option value="">（选择场景）</option>' + C.scenarios.map(function (s) {
+      return '<option value="' + s.id + '">' + esc(s.name) + '</option>';
+    }).join('');
+  }
+
+  function sensorOptions(cur) {
+    return C.SENSORS.map(function (s) {
+      return '<option value="' + s.id + '"' + (s.id === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+    }).join('');
+  }
+
+  function readInput() {
+    const rows = Array.prototype.slice.call($('rows').querySelectorAll('.item')).map(function (el) {
+      const g = function (k) { const e = el.querySelector('.' + k); return e ? e.value : ''; };
+      return { name: g('nm'), sensor: g('sn'), f: g('f'), N: g('N'), s: g('s') };
+    });
+    return {
+      coc: { mode: $('cocMode').value, px: $('cocPx').value, c: $('cocCustom').value },
+      lambda: $('lambda').value,
+      refSensor: $('refSensor').value,
+      solveF: $('solveF').value,
+      customSensor: { w: $('csW').value, h: $('csH').value },
+      target: { near: $('tNear').value, far: $('tFar').value, farInf: $('tFarInf').checked },
+      rows: rows
+    };
+  }
+
+  function rowHTML(it, i) {
+    const v = function (x) { return esc(x === null || x === undefined ? '' : x); };
+    return '<div class="item" data-i="' + i + '">' +
+      '<div class="itemhead">' +
+      '<input type="text" class="nm" value="' + v(it.name) + '" aria-label="方案名称">' +
+      '<select class="sn" aria-label="画幅">' + sensorOptions(it.sensor) + '</select>' +
+      '<button type="button" class="tiny" data-dup="' + i + '">复制</button>' +
+      '<button type="button" class="tiny" data-del="' + i + '">删</button>' +
+      '</div>' +
+      '<div class="grid4">' +
+      '<label>焦距 mm<input type="text" class="f" value="' + v(it.f) + '"></label>' +
+      '<label>光圈 f/<input type="text" class="N" value="' + v(it.N) + '"></label>' +
+      '<label>对焦距离 m<input type="text" class="s" value="' + v(it.s) + '"></label>' +
+      '</div></div>';
+  }
+
+  function writeInput(inp) {
+    $('cocMode').value = (inp.coc && inp.coc.mode) || 'diag1500';
+    $('cocPx').value = inp.coc && inp.coc.px !== undefined ? inp.coc.px : 6000;
+    $('cocCustom').value = inp.coc && inp.coc.c !== undefined ? inp.coc.c : 0.029;
+    $('lambda').value = inp.lambda;
+    $('refSensor').value = inp.refSensor;
+    $('solveF').value = inp.solveF === undefined ? 50 : inp.solveF;
+    $('csW').value = inp.customSensor ? inp.customSensor.w : 36;
+    $('csH').value = inp.customSensor ? inp.customSensor.h : 24;
+    $('tNear').value = inp.target.near;
+    $('tFar').value = inp.target.far;
+    $('tFarInf').checked = !!inp.target.farInf;
+    $('rows').innerHTML = inp.rows.map(rowHTML).join('');
+    $('rowCount').textContent = inp.rows.length + ' 个方案';
+    toggleCond();
+  }
+
+  function toggleCond() {
+    const m = $('cocMode').value;
+    $('wrapPx').classList.toggle('hidden', m !== 'pixel');
+    $('wrapCoc').classList.toggle('hidden', m !== 'custom');
+    $('tFar').disabled = $('tFarInf').checked;
+  }
+
+  function markBad(errors) {
+    Array.prototype.slice.call(document.querySelectorAll('input.bad')).forEach(function (e) { e.classList.remove('bad'); });
+    const globalMap = {
+      lambda: 'lambda', solveF: 'solveF', refSensor: 'refSensor',
+      'coc.px': 'cocPx', 'coc.c': 'cocCustom',
+      'customSensor.w': 'csW', 'customSensor.h': 'csH',
+      'target.near': 'tNear', 'target.far': 'tFar'
+    };
+    errors.forEach(function (e) {
+      let el = null;
+      if (e.row > 0) {
+        const box = $('rows').querySelector('.item[data-i="' + (e.row - 1) + '"]');
+        if (box) el = box.querySelector('.' + (e.field === 'name' ? 'nm' : e.field));
+      } else if (globalMap[e.field]) el = $(globalMap[e.field]);
+      else if (e.field === 'rows') el = $('rows');
+      if (el) el.classList.add('bad');
+    });
+  }
+
+  /* ── 主计算 ───────────────────────────────────────── */
+  function compute() {
+    const raw = readInput();
+    const nm = C.normalize(raw);
+    state.errors = nm.errors;
+    state.warnings = nm.warnings;
+    markBad(nm.errors);
+    if (!nm.ok) {
+      state.res = null; state.checks = [];
+      $('errors').innerHTML = '<div class="errbox"><b>有 ' + nm.errors.length + ' 处输入要改：</b><ul class="tight">' +
+        nm.errors.map(function (e) { return '<li>' + esc(e.msg) + '</li>'; }).join('') + '</ul></div>';
+      $('headline').textContent = '先把上面标红的输入改对，本页会立刻重算。';
+      $('kpis').innerHTML = '';
+      $('warnBox').innerHTML = '';
+      $('revTag').textContent = '';
+      $('reverse').innerHTML = '<p class="muted">等待合法输入</p>';
+      $('planBody').innerHTML = '<tr><td colspan="11" class="muted">等待合法输入</td></tr>';
+      $('detailName').textContent = '';
+      $('detailBody').innerHTML = '<p class="muted">—</p>';
+      $('lawBody').innerHTML = '<p class="muted">—</p>';
+      $('insights').innerHTML = '';
+      $('sensBody').innerHTML = '';
+      $('steps').innerHTML = '';
+      $('limits').innerHTML = '';
+      $('checks').innerHTML = '';
+      $('checkTag').textContent = '';
+      $('verdictTag').textContent = '输入未通过校验';
+      $('cocNote').textContent = '';
+      $('sensOf').textContent = '';
+      return;
+    }
+    $('errors').innerHTML = '';
+    const res = C.analyze(nm.cfg);
+    state.res = res;
+    state.checks = res.checks;
+    state.sel = Math.min(state.sel, res.rows.length - 1);
+    render(res);
+  }
+
+  function render(res) {
+    state.renders++;
+    const rev = res.reverse;
+    const covered = res.rows.filter(function (x) { return x.covered; }).length;
+    $('verdictTag').textContent = covered + ' / ' + res.rows.length + ' 个方案整段覆盖目标区间';
+
+    /* 主结论 */
+    $('headline').innerHTML = '目标区间 <b>' + D(res.cfg.target.near) + ' – ' +
+      (res.cfg.target.farInf ? '∞' : D(res.cfg.target.far)) + '</b>：' + res.rows.length +
+      ' 个方案里 <b>' + covered + ' 个</b>能整段盖住。' +
+      (rev.ok
+        ? '用 <b>' + N1(rev.f) + 'mm</b> 镜头时，闭式反推给出：对焦放在 <b>' + D(rev.sStar) +
+          '</b>、光圈收到 <b>' + F(rev.nStar) + '</b>（回代重算得到的近点/远点是 ' + D(rev.backDn) + ' / ' +
+          (rev.backDf === Infinity ? '∞' : D(rev.backDf)) + '）。'
+        : '反推得出：<b>本次目标区间做不到</b>——' + esc(rev.reason));
+
+    /* KPI */
+    const deepest = res.rows.slice().sort(function (a, b) {
+      const av = a.total === Infinity ? Number.MAX_VALUE : a.total;
+      const bv = b.total === Infinity ? Number.MAX_VALUE : b.total;
+      return bv - av;
+    })[0];
+    /* 数值只放短串（长串会把窄屏撑破）；方案名放副标题，随宽度换行 */
+    const kpis = [
+      ['覆盖目标区间的方案', covered + ' / ' + res.rows.length, '整段落在 [近点, 远点] 内'],
+      ['反推所需对焦距离', rev.ok ? D(rev.sStar) : '做不到', rev.ok ? '两端点的调和平均' : '见下方原因'],
+      ['反推所需最小光圈', rev.ok ? F(rev.nStar) : '—', rev.ok ? '一键采用时向上取整到 ' + F(Math.ceil(rev.nStar * 100) / 100) : ''],
+      ['景深最大的方案', deepest ? (deepest.total === Infinity ? '∞' : D(deepest.total)) : '—', deepest ? deepest.name : '']
+    ];
+    $('kpis').innerHTML = kpis.map(function (k) {
+      return '<div class="kpi"><div class="k">' + esc(k[0]) + '</div><div class="v">' + esc(k[1]) + '</div>' +
+        (k[2] ? '<div class="s">' + esc(k[2]) + '</div>' : '') + '</div>';
+    }).join('');
+
+    /* 提示 */
+    const warn = [];
+    res.warnings.forEach(function (w) { warn.push(w); });
+    res.rows.forEach(function (x) {
+      if (x.diffractionLimited) {
+        warn.push(x.name + '：光圈 f/' + N1(x.N) + ' 已经越过本画幅的衍射转折光圈 f/' + N2(x.nDiff) + '，' +
+          '再收小不会更清晰——艾里斑（' + L(x.airy) + '）已经大于弥散圆（' + L(x.coc) + '）。');
+      }
+    });
+    $('warnBox').innerHTML = warn.length
+      ? '<div class="warnbox"><b>需要注意 ' + warn.length + ' 处：</b><ul class="tight">' +
+        warn.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>'
+      : '<div class="okbox">没有需要注意的告警。</div>';
+
+    renderReverse(res);
+    renderPlans(res);
+    renderDetail(res);
+    renderLaws(res);
+    renderInsights(res);
+    renderSens(res);
+    renderSteps(res);
+    renderLimits();
+    renderChecks(res);
+  }
+
+  /* ── 反推卡 ───────────────────────────────────────── */
+  function renderReverse(res) {
+    const rev = res.reverse;
+    $('revTag').textContent = rev.ok ? ('用 ' + N1(rev.f) + 'mm 镜头反推') : '本次不可行';
+    if (!rev.ok) {
+      $('reverse').innerHTML = '<div class="errbox"><b>这个目标区间在本次设置下做不到。</b><br>' + esc(rev.reason) +
+        '<br><span class="muted">反推出的对焦距离是与焦距无关的调和平均 s* = 两端点之积的 2 倍 ÷ 两端点之和；' +
+        '所需光圈随焦距按 f² 增长，所以换更短的焦距通常更容易做到。</span></div>' + revTableHTML(rev);
+      return;
+    }
+    let h = '<div class="grid3">' +
+      metric('反推对焦距离 s*', rev.ok ? D(rev.sStar) : '—', '两端点的调和平均，与焦距无关') +
+      metric('反推最小光圈', F(rev.nStar), '一键采用时会向上取整到 f/' + (Math.ceil(rev.nStar * 100) / 100).toFixed(2) + '（宁深不浅）') +
+      metric('回代近点 / 远点', D(rev.backDn) + ' / ' + (rev.backDf === Infinity ? '∞' : D(rev.backDf)),
+        '把 s*、N* 代回公式重算的结果') +
+      '</div>';
+    h += '<p class="footnote">回代与目标的残差：近点 ' + L(rev.errNear) + '、远点 ' +
+      (rev.errFar === Infinity ? '∞' : L(rev.errFar)) + '（浮点噪声量级，不是模型误差）。</p>';
+
+    if (rev.naive) {
+      h += '<h3>常见做法对照：对焦在区间「中点」会怎样</h3>' +
+        '<div class="grid3">' +
+        metric('中点对焦距离', D(rev.naive.s), '（近点 + 远点）÷ 2，不是调和平均') +
+        metric('此时的实际近点 / 远点', D(rev.naive.dn) + ' / ' + (rev.naive.df === Infinity ? '∞' : D(rev.naive.df)), '光圈仍用 ' + F(rev.nStar)) +
+        metric('判定', rev.naive.coverLabel, '近端缺口 ' + (rev.naive.gapNear > 0 ? D(rev.naive.gapNear) : '0')) +
+        '</div>' +
+        '<p class="footnote">同一个光圈下，把对焦从调和平均挪到算术中点，近点从 ' + D(rev.backDn) + ' 退到 ' +
+        D(rev.naive.dn) + '，而远点从 ' + (rev.backDf === Infinity ? '∞' : D(rev.backDf)) + ' 推到 ' +
+        (rev.naive.df === Infinity ? '∞' : D(rev.naive.df)) + '——余量被放到了不需要的地方。</p>';
+    }
+    h += revTableHTML(rev);
+    $('reverse').innerHTML = h;
+  }
+
+  function revTableHTML(rev) {
+    if (!rev.table) return '';
+    return '<h3>同一个目标区间，换焦距要多大光圈</h3>' +
+      '<div class="tw"><table class="wrap"><thead><tr><th>焦距</th><th>反推对焦距离</th><th>所需最小光圈</th><th>能不能做到</th></tr></thead><tbody>' +
+      rev.table.rows.map(function (r) {
+        return '<tr><td>' + N1(r.f) + ' mm</td><td>' + D(r.sStar) + '</td><td>' +
+          (r.feasible ? F(r.nStar) : '—') + '</td><td>' +
+          (r.feasible ? '<span class="pill ok">可以</span>' : '<span class="pill fail">' + esc(r.why) + '</span>') +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="footnote">对焦距离一列全都相同（' + D(rev.table.sStar) + '）：它是两端点的调和平均，与焦距、光圈、弥散圆都无关。' +
+      '但所需光圈随 f² 增长——这是「想拍清楚一整段」时广角比长焦好用的真正原因。</p>';
+  }
+
+  function metric(k, v, s) {
+    return '<div class="metric"><div class="mk">' + esc(k) + '</div><div class="mv">' + esc(v) + '</div>' +
+      (s ? '<div class="ms">' + esc(s) + '</div>' : '') + '</div>';
+  }
+
+  /* ── 方案对照表 ───────────────────────────────────── */
+  function renderPlans(res) {
+    $('planBody').innerHTML = res.rows.map(function (x, i) {
+      return '<tr class="pick' + (i === state.sel ? ' sel' : '') + '" data-i="' + i + '">' +
+        '<td>' + esc(x.name) + '</td>' +
+        '<td>' + esc(shortSensor(x.sensorName)) + '</td>' +
+        '<td>' + N1(x.f) + ' mm</td><td>' + F(x.N) + '</td><td>' + D(x.s) + '</td>' +
+        '<td>' + D(x.H) + '</td><td>' + D(x.dn) + '</td>' +
+        '<td>' + (x.df === Infinity ? '∞' : D(x.df)) + '</td>' +
+        '<td>' + (x.total === Infinity ? '∞' : D(x.total)) + '</td>' +
+        '<td>' + pillHTML(x.cover, x.coverLabel) + '</td>' +
+        '<td>' + (x.dfInf ? '远点 ∞' : '远点有限') + '</td>' +
+        '</tr>';
+    }).join('');
+    const c0 = res.rows[0];
+    $('cocNote').textContent = '本次弥散圆 c = ' + L(c0.coc) + '（' + c0.cocSource + '）。';
+  }
+
+  function shortSensor(n) {
+    return String(n).replace('（多数手机主摄）', '').replace('（大底手机 / 卡片机）', '')
+      .replace('（4/3 画幅）', '').replace('（佳能 1.6×）', ' 1.6×').replace('（尼康 / 索尼 1.5×）', ' 1.5×')
+      .replace('英寸', '"').replace(/\s+"/g, '"').replace('（36×24）', '');
+  }
+
+  /* ── 选中方案详解 ─────────────────────────────────── */
+  function renderDetail(res) {
+    const x = res.rows[state.sel];
+    if (!x) { $('detailName').textContent = ''; $('detailBody').innerHTML = '<p class="muted">—</p>'; return; }
+    $('detailName').textContent = x.name;
+    const ratioTxt = x.ratioBack === Infinity ? '1 : ∞（远点无限远）' : ('1 : ' + N2(x.ratioBack));
+    const shareTxt = x.frontShare === null ? '—' : P2(x.frontShare * 100);
+    let h = '<div class="grid3">' +
+      metric('超焦距 H', D(x.H), '对焦到这里：近点 = H/2、远点 = ∞') +
+      metric('近点', D(x.dn), '比它更近就开始虚') +
+      metric('远点', x.df === Infinity ? '∞' : D(x.df), x.dfInf ? 's ≥ H，远点直接到无限远' : '比它更远就开始虚') +
+      metric('总景深', x.total === Infinity ? '∞' : D(x.total), '从近点到远点这一段的长度') +
+      metric('前景深 / 后景深', (x.front === Infinity ? '∞' : D(x.front)) + ' / ' + (x.back === Infinity ? '∞' : D(x.back)), '对焦位置前 / 后的清晰长度') +
+      metric('前 : 后', ratioTxt, '前段占总景深 ' + shareTxt) +
+      metric('无限远背景弥散圆', L(x.blurInf), '占画幅高度 ' + P2(x.blurPct) + '（f/' + N1(x.N) + '、对焦 ' + D(x.s) + '）') +
+      metric('衍射转折光圈 N_d', F(x.nDiff), x.diffractionLimited ? '当前 ' + F(x.N) + ' 已越过这条线' : '当前 ' + F(x.N) + ' 还没到这条线') +
+      metric('等效焦距 / 等效光圈', N1(x.fEq) + ' mm / ' + F(x.NEq), '按' + shortSensor(x.refSensorName) + '算（等效系数 ' + N3(x.crop) + '）') +
+      '</div>';
+
+    h += '<p class="footnote">艾里斑直径 2.44λN = ' + L(x.airy) + '，弥散圆 c = ' + L(x.coc) +
+      '；' + (x.diffractionLimited
+        ? '<b>艾里斑已经大于 c</b>：此时画面上的最小细节由衍射决定，再收小光圈不会更清晰。'
+        : '艾里斑还小于 c：继续收小光圈仍能换来更深的景深。') +
+      ' 放大率约 1:' + (x.mag > 0 ? N1(1 / x.mag) : '∞') + (x.closeFocus ? '，已进入近摄区间（结论偏差可能变大）。' : '。') + '</p>';
+
+    h += '<h3>让这一段更清晰：把改动直接作用到输入</h3><div class="btns">' +
+      '<button type="button" data-act="hyper">把对焦搬到超焦距 H（' + D(x.H) + '）</button>' +
+      '<button type="button" data-act="third">把对焦搬到 H ÷ 3（' + D(x.H / 3) + '）</button>' +
+      '<button type="button" data-act="solve">按反推设置本方案</button>' +
+      '<button type="button" data-act="equiv">换成等效的' + esc(shortSensor(x.refSensorName)) + '设置</button>' +
+      '<button type="button" data-act="clone">复制为新方案</button>' +
+      '</div>';
+
+    const tips = [];
+    if (x.cover === 'cover') tips.push('本方案的清晰范围整段盖住了目标区间。');
+    else {
+      if (x.gapNear > 0) tips.push('近端差 ' + D(x.gapNear) + '：把对焦距离往前挪，或收小光圈。');
+      if (x.gapFar === Infinity) tips.push('远端差到无限远：需要把对焦推到超焦距附近才可能到 ∞。');
+      else if (x.gapFar > 0) tips.push('远端差 ' + D(x.gapFar) + '：把对焦距离往后挪，或收小光圈。');
+    }
+    if (x.diffractionLimited) tips.push('注意已经越过衍射转折光圈：收小光圈不再换来更多细节，优先改对焦位置或焦距。');
+    if (x.total !== Infinity && x.back / x.front > 3) tips.push('后景深是前景深的 ' + N2(x.ratioBack) + ' 倍：余量大量堆在对焦点之后，往前挪一点往往更划算。');
+    h += '<ul class="tight">' + tips.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+
+    $('detailBody').innerHTML = h;
+  }
+
+  /* ── 口径对照卡 ───────────────────────────────────── */
+  function renderLaws(res) {
+    const law = res.laws;
+    let h = '<h3>对焦位置口径对照：同一个超焦距，对焦放哪就决定了清晰段落在哪</h3>' +
+      '<div class="tw"><table class="wrap"><thead><tr><th>对焦位置</th><th>对焦距离</th><th>近点</th><th>远点</th><th>总景深</th></tr></thead><tbody>' +
+      law.compare.map(function (r) {
+        return '<tr><td>' + esc(r.label) + '</td><td>' + D(r.s) + '</td><td>' + D(r.dn) + '</td><td>' +
+          (r.df === Infinity ? '∞' : D(r.df)) + '</td><td>' + (r.total === Infinity ? '∞' : D(r.total)) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="footnote">以第 1 个方案（' + esc(shortSensor(law.sensorName)) + '、' + N1(law.f) + 'mm、' + F(law.N) +
+      '）为例：H = ' + D(law.H) + '。对焦在 H 上，近点算得 ' + D(law.hyper.dn) + '，而 H ÷ 2 = ' + D(law.hyper.halfH) +
+      '，两者相对差 ' + law.hyper.relErrDn.toExponential(2) + '，远点在这一支里直接是 ∞——这条与 f、N、c 都无关，是公式本身的结构。</p>';
+
+    const t = law.third;
+    h += '<h3>「前 1/3 后 2/3」不是通用法则</h3>' +
+      '<p class="footnote">同一个方案，若把对焦距离取 H ÷ 3 = ' + D(t.s) + '，算得前景深 ' + D(t.front) +
+      '、后景深 ' + D(t.back) + '，前后比 <b>1 : ' + N3(t.ratioBack) + '</b>；精确式是 H : (2H − 3f) → 1 : ' +
+      N3(t.predRatioBack) + '，前段占总景深 <b>' + P3(t.share * 100) + '</b>（不是 33.333%，因为 f > 0 时精确值是 H/(3(H−f))）。' +
+      '上面 6 个方案的实际前后比各不相同，所以「前 1/3 后 2/3」只能当口语，不能当尺子。</p>';
+
+    h += '<h3>衍射转折光圈：收小光圈的收益有上限</h3>' +
+      '<div class="tw"><table class="wrap"><thead><tr><th>方案</th><th>画幅</th><th>弥散圆 c</th><th>衍射转折光圈 N_d</th><th>当前光圈</th><th>状态</th></tr></thead><tbody>' +
+      res.rows.map(function (x) {
+        return '<tr><td>' + esc(x.name) + '</td><td>' + esc(shortSensor(x.sensorName)) + '</td><td>' + L(x.coc) +
+          '</td><td>' + F(x.nDiff) + '</td><td>' + F(x.N) + '</td><td>' +
+          (x.diffractionLimited ? '<span class="pill fail">已越过</span>' : '<span class="pill ok">未越过</span>') +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="footnote">判据是艾里斑第一暗环直径 2.44λN（λ = ' + res.cfg.lambda + ' nm）追上弥散圆 c。' +
+      '同一支 f/8，在全画幅上离转折点还很远，在 1/2.3 英寸上早就越过了——<b>衍射转折点由画幅决定</b>。</p>';
+
+    const ph = res.rows.filter(function (x) { return x.sensor === 'phone23'; })[0];
+    if (ph) {
+      h += '<h3>等效口径：小底「f/1.8」和大底「f/1.8」不是一回事</h3>' +
+        '<div class="grid3">' +
+        metric(ph.name + ' 的实际设置', N1(ph.f) + ' mm ' + F(ph.N), shortSensor(ph.sensorName) + '，等效系数 ' + N3(ph.crop)) +
+        metric('等效到' + shortSensor(ph.refSensorName), N1(ph.fEq) + ' mm ' + F(ph.NEq), '视角相同、景深也相同的那套设置') +
+        metric('等效后近点/远点偏差', (ph.eqDevNear === null ? '不可比较' : P3(ph.eqDevNear * 100)) + ' / ' +
+          (ph.eqDevFar === null ? '不可比较' : P3(ph.eqDevFar * 100)), '等效是 f ≪ s 时的近似，不是恒等式') +
+        '</div>' +
+        '<p class="footnote">把该方案按等效焦距/等效光圈搬到' + esc(shortSensor(ph.refSensorName)) +
+        '重算，近点与远点并不严格相等——偏差与闭式预测一致（见结构自检）。所以下面这句只在近似意义上成立：' +
+        '<b>它的景深比全画幅 f/8 还深</b>，不是因为手机更强，而是画幅决定了景深口径。</p>';
+    }
+    $('lawBody').innerHTML = h;
+  }
+
+  function renderInsights(res) {
+    $('insights').innerHTML = res.insights.map(function (x) {
+      return '<div class="slice"><span class="st">' + esc(x.title) + '</span>' + esc(x.body) + '</div>';
+    }).join('');
+  }
+
+  /* ── 敏感性 ───────────────────────────────────────── */
+  function renderSens(res) {
+    const x = res.rows[state.sel] || res.rows[0];
+    const rows = C.sensitivity(res.cfg, state.sel);
+    $('sensOf').textContent = '对「' + x.name + '」逐行完整重算';
+    $('sensBody').innerHTML = rows.map(function (r) {
+      if (r.invalid) {
+        return '<tr><td>' + esc(r.label) + '</td><td colspan="8" class="muted">' + esc(r.note) + '</td></tr>';
+      }
+      const d = r.deltaTotal === null ? '—' : ((r.deltaTotal >= 0 ? '+' : '') + D(r.deltaTotal));
+      return '<tr><td>' + esc(r.label) + '</td><td>' + N1(r.f) + ' mm</td><td>' + F(r.N) + '</td><td>' + D(r.s) +
+        '</td><td>' + D(r.dn) + '</td><td>' + (r.df === Infinity ? '∞' : D(r.df)) + '</td><td>' +
+        (r.total === Infinity ? '∞' : D(r.total)) + '</td><td>' + d + '</td><td>' + pillHTML(r.cover, r.coverLabel) + '</td></tr>';
+    }).join('');
+  }
+
+  /* ── 下一步 ───────────────────────────────────────── */
+  function renderSteps(res) {
+    const rev = res.reverse;
+    const out = [];
+    const fail = res.rows.filter(function (x) { return !x.covered; });
+    if (rev.ok) {
+      out.push('要整段拍清楚，把对焦放到 ' + D(rev.sStar) + '、光圈开到 ' + F(rev.nStar) + ' 或更小（数值更大）——这是闭式解，回代已经验算过。');
+    } else {
+      out.push('本次目标区间做不到，原因：' + rev.reason + ' 先放宽目标区间，或换更短的焦距再试。');
+    }
+    if (fail.length) {
+      const names = fail.slice(0, 3).map(function (x) { return x.name; }).join('、');
+      out.push('还有 ' + fail.length + ' 个方案盖不住（' + names + (fail.length > 3 ? ' 等' : '') +
+        '）：先收小光圈，再按上面的对焦距离挪一挪，最后才考虑换焦距。');
+    } else {
+      out.push('当前 ' + res.rows.length + ' 个方案都整段覆盖了目标区间。');
+    }
+    const over = res.rows.filter(function (x) { return x.diffractionLimited; });
+    if (over.length) {
+      out.push('有 ' + over.length + ' 个方案已经越过衍射转折光圈（' + over.slice(0, 3).map(function (x) { return x.name; }).join('、') +
+        '）：它们再收小光圈不会更清晰，应改对焦位置或焦距，而不是继续收光圈。');
+    }
+    const deep = res.rows.filter(function (x) { return x.total !== Infinity && x.ratioBack > 3; });
+    if (deep.length) {
+      out.push('有 ' + deep.length + ' 个方案的后景深超过前景深 3 倍（' + deep[0].name + ' 是 1 : ' + N2(deep[0].ratioBack) +
+        '）：余量堆在后方，把对焦往前挪收益更大。');
+    }
+    if (res.rows.some(function (x) { return x.sensor === 'phone23'; })) {
+      out.push('对照一下等效光圈：小底上的 f/' + N1(res.rows.filter(function (x) { return x.sensor === 'phone23'; })[0].N) +
+        ' 在景深上相当于大底的 f/' + N2(res.rows.filter(function (x) { return x.sensor === 'phone23'; })[0].NEq) +
+        '；要比「谁虚化更强」，比的是等效光圈，不是镜头上印的那个数。');
+    }
+    out.push('导出结果卡或 Markdown，把这次的设置与结论一起存档；换条件后本页会立刻重算。');
+    $('steps').innerHTML = out.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+  }
+
+  function renderLimits() {
+    $('limits').innerHTML = C.LIMITS.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+  }
+
+  function renderChecks(res) {
+    const ok = res.checks.filter(function (c) { return c.ok; }).length;
+    $('checkTag').textContent = ok + ' / ' + res.checks.length + ' 项通过';
+    $('checks').innerHTML = res.checks.map(function (c) {
+      return '<li>' + (c.ok ? '<span class="vd">通过</span>' : '<span class="vf">未通过</span>') + ' · ' + esc(c.msg) +
+        (c.extra ? ' <span class="muted">[' + esc(c.extra) + ']</span>' : '') + '</li>';
+    }).join('');
+  }
+
+  /* ── 把建议作用回输入 ─────────────────────────────── */
+  function rowEl(i) { return $('rows').querySelector('.item[data-i="' + i + '"]'); }
+  /* 增删方案后把 data-i 重新对齐，否则报错标红会落到别的行 */
+  function reindex() {
+    const items = $('rows').querySelectorAll('.item');
+    Array.prototype.forEach.call(items, function (el, i) {
+      el.setAttribute('data-i', String(i));
+      const d = el.querySelector('[data-del]'); if (d) d.setAttribute('data-del', String(i));
+      const u = el.querySelector('[data-dup]'); if (u) u.setAttribute('data-dup', String(i));
+    });
+    $('rowCount').textContent = items.length + ' 个方案';
+    return items.length;
+  }
+  function setRowField(i, cls, value) {
+    const el = rowEl(i); if (!el) return;
+    const inp = el.querySelector('.' + cls); if (inp) inp.value = value;
+  }
+  function setRowSensor(i, id) { const el = rowEl(i); if (el) el.querySelector('.sn').value = id; }
+
+  function act(kind) {
+    const res = state.res;
+    if (!res) { toast('先让输入通过校验'); return; }
+    const i = state.sel;
+    const x = res.rows[i];
+    if (!x) return;
+    if (kind === 'hyper') { setRowField(i, 's', String(Math.round(x.H * 1000) / 1000)); compute(); toast('已把对焦搬到超焦距 H = ' + D(x.H)); return; }
+    if (kind === 'third') { setRowField(i, 's', String(Math.round(x.H / 3 * 1000) / 1000)); compute(); toast('已把对焦搬到 H ÷ 3'); return; }
+    if (kind === 'clone') {
+      if (res.rows.length >= C.MAX_ROWS) { toast('最多 ' + C.MAX_ROWS + ' 个方案'); return; }
+      const last = res.rows[res.rows.length - 1];
+      const box = $('rows');
+      box.insertAdjacentHTML('beforeend', rowHTML({
+        name: (last.name + ' 副本').slice(0, C.NAME_MAX), sensor: last.sensor,
+        f: last.f, N: last.N, s: Math.round(last.s * 1000) / 1000
+      }, res.rows.length));
+      reindex();
+      state.sel = res.rows.length;
+      compute(); toast('已复制为新方案'); return;
+    }
+    if (kind === 'solve') {
+      const rv = C.applySolve(res.cfg, x.f, res.cfg.rows[i].dims);
+      if (!rv.ok) { toast('这个目标区间用 ' + N1(x.f) + 'mm 做不到：' + rv.reason.slice(0, 40)); return; }
+      setRowField(i, 's', String(rv.s));
+      setRowField(i, 'N', String(rv.N));
+      compute();
+      toast('已按 ' + N1(x.f) + 'mm 的反推值设置：对焦 ' + D(rv.s) + '、' + F(rv.N) + '（判定：' + rv.coverLabel + '）');
+      return;
+    }
+    if (kind === 'equiv') {
+      if (!x.eqValid) { toast('等效焦距已不小于对焦距离，等效设置不成立'); return; }
+      if (x.NEq > C.N_MAX) { toast('等效光圈 ' + F(x.NEq) + ' 超出本页上限 ' + F(C.N_MAX)); return; }
+      if (x.fEq > C.F_MAX) { toast('等效焦距 ' + N1(x.fEq) + ' mm 超出本页上限'); return; }
+      setRowSensor(i, res.cfg.refSensor);
+      setRowField(i, 'f', String(Math.round(x.fEq * 100) / 100));
+      setRowField(i, 'N', String(Math.round(x.NEq * 100) / 100));
+      compute(); toast('已换成等效的' + shortSensor(x.refSensorName) + '设置');
+      return;
+    }
+  }
+
+  /* ── 导出 ─────────────────────────────────────────── */
+  function download(name, text, type) {
+    const blob = new Blob([text], { type: type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+  }
+
+  function cell(x) {
+    const s = String(x);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function csvText() {
+    const res = state.res; if (!res) return '';
+    const L2 = [];
+    L2.push(['景深对账台（dof-ledger）导出', new Date().toISOString()]);
+    L2.push(['弥散圆口径', C.COC_BY_ID[res.cfg.coc.mode].name]);
+    L2.push(['波长 λ (nm)', res.cfg.lambda]);
+    L2.push(['对照画幅', res.cfg.refSensor]);
+    L2.push(['目标近点 (m)', res.cfg.target.near]);
+    L2.push(['目标远点 (m)', res.cfg.target.farInf ? '∞' : res.cfg.target.far]);
+    L2.push(['反推用焦距 (mm)', res.cfg.solveF]);
+    const rev = res.reverse;
+    L2.push(['反推可行', rev.ok ? '是' : '否']);
+    if (rev.ok) {
+      L2.push(['反推对焦距离 (m)', rev.sStar]);
+      L2.push(['反推最小光圈（f/ 数值）', rev.nStar]);
+      L2.push(['回代近点 (m)', rev.backDn]);
+      L2.push(['回代远点 (m)', rev.dfInf === undefined ? rev.backDf : rev.backDf]);
+    } else {
+      L2.push(['不可行原因', rev.reason]);
+    }
+    if (rev.naive) {
+      L2.push(['中点对焦距离 (m)', rev.naive.s]);
+      L2.push(['中点对焦实际近点 (m)', rev.naive.dn]);
+      L2.push(['中点对焦实际远点 (m)', rev.naive.df]);
+      L2.push(['中点对焦判定', rev.naive.coverLabel]);
+    }
+    L2.push([]);
+    const head = ['方案', '画幅', '焦距mm', '光圈f', '对焦距离m', '超焦距m', '近点m', '远点m', '前景深m', '后景深m',
+      '总景深m', '前后比(后/前)', '前段占总景深', '背景弥散圆mm', '占画幅高%', '衍射转折光圈', '是否过衍射',
+      '覆盖判定', '近端缺口m', '远端缺口m', '等效焦距mm', '等效光圈f'];
+    L2.push(head);
+    res.rows.forEach(function (x) {
+      L2.push([x.name, x.sensorName, x.f, x.N, x.s, x.H, x.dn, x.df === Infinity ? '∞' : x.df,
+        x.front, x.back === Infinity ? '∞' : x.back, x.total === Infinity ? '∞' : x.total,
+        x.ratioBack === Infinity ? '∞' : x.ratioBack,
+        x.frontShare === null ? '' : x.frontShare,
+        x.blurInf, x.blurPct, x.nDiff, x.diffractionLimited ? '是' : '否',
+        x.coverLabel, x.gapNear, x.gapFar === Infinity ? '∞' : x.gapFar, x.fEq, x.NEq]);
+    });
+    L2.push([]);
+    L2.push(['结构自检']);
+    L2.push(['通过', '说明', '附注']);
+    res.checks.forEach(function (c) { L2.push([c.ok ? '是' : '否', c.msg, c.extra]); });
+    return '\ufeff' + L2.map(function (r) { return r.map(cell).join(','); }).join('\r\n') + '\r\n';
+  }
+
+  function mdText() {
+    const res = state.res; if (!res) return '';
+    const rev = res.reverse;
+    const o = [];
+    o.push('# 景深对账台 · 结果（dof-ledger）');
+    o.push('');
+    o.push('导出时间：' + new Date().toISOString());
+    o.push('');
+    o.push('## 口径');
+    o.push('');
+    o.push('- 弥散圆口径：' + C.COC_BY_ID[res.cfg.coc.mode].name + '（本次各方案的 c 见下表）');
+    o.push('- 波长 λ：' + res.cfg.lambda + ' nm');
+    o.push('- 对照画幅：' + res.cfg.refSensor);
+    o.push('- 目标区间：' + D(res.cfg.target.near) + ' – ' + (res.cfg.target.farInf ? '∞' : D(res.cfg.target.far)));
+    o.push('- 反推用焦距：' + N1(res.cfg.solveF) + ' mm');
+    o.push('');
+    o.push('## 反推');
+    o.push('');
+    if (rev.ok) {
+      o.push('- 对焦距离 s* = **' + D(rev.sStar) + '**（两端点的调和平均，与焦距、光圈、弥散圆都无关）');
+      o.push('- 最小光圈 N* = **' + F(rev.nStar) + '**');
+      o.push('- 回代重算：近点 ' + D(rev.backDn) + '、远点 ' + (rev.backDf === Infinity ? '∞' : D(rev.backDf)) +
+        '（与目标的残差 ' + L(rev.errNear) + ' / ' + (rev.errFar === Infinity ? '∞' : L(rev.errFar)) + '）');
+      if (rev.naive) {
+        o.push('- 中点对焦对照：对焦在 ' + D(rev.naive.s) + ' 时实际近点 ' + D(rev.naive.dn) + '、远点 ' +
+          (rev.naive.df === Infinity ? '∞' : D(rev.naive.df)) + '，判定「' + rev.naive.coverLabel + '」');
+      }
+      if (rev.table) {
+        o.push('');
+        o.push('| 焦距 | 反推对焦距离 | 所需最小光圈 | 能不能做到 |');
+        o.push('| --- | --- | --- | --- |');
+        rev.table.rows.forEach(function (r) {
+          o.push('| ' + N1(r.f) + ' mm | ' + D(r.sStar) + ' | ' + (r.feasible ? F(r.nStar) : '—') + ' | ' +
+            (r.feasible ? '可以' : r.why) + ' |');
+        });
+      }
+    } else {
+      o.push('- **本次目标区间做不到**：' + rev.reason);
+    }
+    o.push('');
+    o.push('## 方案对照');
+    o.push('');
+    o.push('| 方案 | 画幅 | 焦距 | 光圈 | 对焦距离 | 超焦距 | 近点 | 远点 | 总景深 | 前:后 | 覆盖 |');
+    o.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+    res.rows.forEach(function (x) {
+      o.push('| ' + x.name + ' | ' + x.sensorName + ' | ' + N1(x.f) + ' mm | ' + F(x.N) + ' | ' + D(x.s) + ' | ' +
+        D(x.H) + ' | ' + D(x.dn) + ' | ' + (x.df === Infinity ? '∞' : D(x.df)) + ' | ' +
+        (x.total === Infinity ? '∞' : D(x.total)) + ' | ' + (x.ratioBack === Infinity ? '∞' : '1 : ' + N2(x.ratioBack)) +
+        ' | ' + x.coverLabel + ' |');
+    });
+    o.push('');
+    o.push('## 口径对照');
+    o.push('');
+    o.push('| 对焦位置 | 对焦距离 | 近点 | 远点 | 总景深 |');
+    o.push('| --- | --- | --- | --- | --- |');
+    res.laws.compare.forEach(function (r) {
+      o.push('| ' + r.label + ' | ' + D(r.s) + ' | ' + D(r.dn) + ' | ' + (r.df === Infinity ? '∞' : D(r.df)) + ' | ' +
+        (r.total === Infinity ? '∞' : D(r.total)) + ' |');
+    });
+    const t = res.laws.third;
+    o.push('');
+    o.push('「前 1/3 后 2/3」只在「对焦距离 = H ÷ 3」时成立，且精确式为 H : (2H − 3f)。本次实测：前后比 1 : ' +
+      N3(t.ratioBack) + '（预期 1 : ' + N3(t.predRatioBack) + '），前段占总景深 ' + P3(t.share * 100) + '。');
+    o.push('');
+    o.push('## 衍射转折光圈');
+    o.push('');
+    o.push('| 方案 | 画幅 | 弥散圆 c | N_d | 当前光圈 | 状态 |');
+    o.push('| --- | --- | --- | --- | --- | --- |');
+    res.rows.forEach(function (x) {
+      o.push('| ' + x.name + ' | ' + x.sensorName + ' | ' + L(x.coc) + ' | ' + F(x.nDiff) + ' | ' + F(x.N) + ' | ' +
+        (x.diffractionLimited ? '已越过' : '未越过') + ' |');
+    });
+    o.push('');
+    o.push('## 等效口径');
+    o.push('');
+    o.push('| 方案 | 实际设置 | 等效到' + shortSensor(res.rows[0].refSensorName) + ' | 等效系数 | 等效后近点偏差 | 等效后远点偏差 |');
+    o.push('| --- | --- | --- | --- | --- | --- |');
+    res.rows.forEach(function (x) {
+      o.push('| ' + x.name + ' | ' + N1(x.f) + ' mm ' + F(x.N) + ' | ' + N1(x.fEq) + ' mm ' + F(x.NEq) + ' | ' +
+        N3(x.crop) + ' | ' + (x.eqDevNear === null ? '不可比较' : P3(x.eqDevNear * 100)) + ' | ' +
+        (x.eqDevFar === null ? '不可比较' : P3(x.eqDevFar * 100)) + ' |');
+    });
+    o.push('');
+    o.push('## 值得记住的几条');
+    o.push('');
+    res.insights.forEach(function (x) { o.push('- **' + x.title + '**：' + x.body); });
+    o.push('');
+    o.push('## 结构自检（' + res.checks.filter(function (c) { return c.ok; }).length + ' / ' + res.checks.length + ' 通过）');
+    o.push('');
+    res.checks.forEach(function (c) { o.push('- ' + (c.ok ? '通过' : '未通过') + '：' + c.msg + (c.extra ? '（' + c.extra + '）' : '')); });
+    o.push('');
+    o.push('## 这份账不算什么');
+    o.push('');
+    C.LIMITS.forEach(function (x) { o.push('- ' + x); });
+    o.push('');
+    o.push('> 默认样例、内置场景与以上所有数字都是虚构示例，不是任何真实器材的实测数据。');
+    return o.join('\n') + '\n';
+  }
+
+  function jsonBackup() {
+    return JSON.stringify({
+      app: 'dof-ledger', version: 1, savedAt: new Date().toISOString(),
+      input: readInput()
+    }, null, 2);
+  }
+
+  /* ── 结果卡 PNG（1080×1350） ──────────────────────── */
+  function pngCard() {
+    const res = state.res; if (!res) { toast('先让输入通过校验'); return; }
+    const W = 1080, H = 1350;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const FONT = function (w2, sz) { return w2 + ' ' + sz + 'px "PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif'; };
+    /* 空白必须作为独立 token 保留，否则整张卡的英文/数字之间的空格会被静默吃掉 */
+    const toks = function (t) { return String(t).match(/[A-Za-z0-9.,%×÷+\-−/（）()]+|\s+|[\u4e00-\u9fa5]|[^\s]/g) || []; };
+    const wrap = function (text, maxW, size, weight) {
+      g.font = FONT(weight || 400, size);
+      const out = [];
+      let line = '';
+      toks(text).forEach(function (t) {
+        const t2 = line + t;
+        if (g.measureText(t2).width > maxW && line.trim()) {
+          out.push(line.replace(/\s+$/, ''));
+          line = t.replace(/^\s+/, '');
+        } else line = t2;
+      });
+      if (line.trim()) out.push(line.replace(/\s+$/, ''));
+      /* 不让收尾标点落在行首 */
+      return out.map(function (x, i) { return (i > 0 && /^[）)；，。、%》]/.test(x)) ? '　' + x : x; });
+    };
+    const put = function (text, x, y, size, color, weight, maxW, lh) {
+      g.fillStyle = color; g.font = FONT(weight || 400, size);
+      const lines = maxW ? wrap(text, maxW, size, weight) : [String(text)];
+      lines.forEach(function (ln, i) { g.fillText(ln, x, y + i * (lh || size + 8)); });
+      return y + lines.length * (lh || size + 8);
+    };
+    /* 按剩余宽度自动缩字号，避免静默截断 */
+    const putFit = function (text, x, y, size, minSize, color, weight, maxW) {
+      let sz = size;
+      g.font = FONT(weight || 400, sz);
+      while (sz > minSize && g.measureText(String(text)).width > maxW) { sz -= 1; g.font = FONT(weight || 400, sz); }
+      g.fillStyle = color; g.font = FONT(weight || 400, sz);
+      g.fillText(String(text), x, y);
+    };
+
+    const rev = res.reverse;
+    const covered = res.rows.filter(function (x) { return x.covered; }).length;
+    const phone = res.rows.filter(function (x) { return x.sensor === 'phone23'; })[0];
+    const over = res.rows.filter(function (x) { return x.diffractionLimited; });
+
+    g.fillStyle = '#f5f6f8'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#0f5fa6'; g.fillRect(0, 0, W, 12);
+    put('景深对账台', 72, 106, 50, '#161b22', 700);
+    put('想让这一段都拍清楚：对焦放哪、光圈开多大', 72, 150, 23, '#4a5568', 400, W - 144);
+
+    /* 结论 176–360 */
+    g.fillStyle = '#eaf2fa'; g.fillRect(72, 176, W - 144, 184);
+    put('目标区间 ' + D(res.cfg.target.near) + ' – ' + (res.cfg.target.farInf ? '∞' : D(res.cfg.target.far)) +
+      '：' + covered + ' / ' + res.rows.length + ' 个方案整段覆盖', 96, 218, 30, '#161b22', 500, W - 240);
+    if (rev.ok) {
+      put('用 ' + N1(rev.f) + 'mm 镜头：对焦放到 ' + D(rev.sStar) + '、光圈收到 ' + F(rev.nStar), 96, 272, 31, '#0f5fa6', 700, W - 240);
+      put('回代重算得到近点 ' + D(rev.backDn) + '、远点 ' + (rev.backDf === Infinity ? '∞' : D(rev.backDf)) +
+        '　（残差 ' + L(rev.errNear) + '）', 96, 318, 22, '#161b22', 500, W - 240);
+    } else {
+      put('本次目标区间做不到', 96, 272, 31, '#b42318', 700, W - 240);
+      put(rev.reason, 96, 314, 21, '#161b22', 500, W - 240);
+    }
+
+    /* KPI 380–500 */
+    const kpi = [
+      ['反推对焦距离', rev.ok ? D(rev.sStar) : '—'],
+      ['反推最小光圈', rev.ok ? F(rev.nStar) : '—'],
+      ['已越过衍射的方案', over.length + ' / ' + res.rows.length],
+      ['中点对焦判定', rev.naive ? rev.naive.coverLabel : '—']
+    ];
+    kpi.forEach(function (x, i) {
+      const px = 72 + (i % 2) * 476, py = 380 + Math.floor(i / 2) * 122;
+      g.fillStyle = '#fff'; g.fillRect(px, py, 452, 114);
+      g.strokeStyle = '#e3e6eb'; g.strokeRect(px, py, 452, 114);
+      g.fillStyle = '#4a5568'; g.font = FONT(400, 22); g.fillText(x[0], px + 24, py + 38);
+      putFit(x[1], px + 24, py + 86, 34, 20, '#161b22', 700, 404);
+    });
+
+    /* 逐方案 640–930 */
+    put('逐方案：清晰范围与判定', 72, 662, 28, '#161b22', 700, W - 144);
+    const cols = [72, 306, 542, 778, 986];
+    g.fillStyle = '#7b8794'; g.font = FONT(400, 20);
+    ['方案', '近点', '远点', '总景深', '判定'].forEach(function (t, i) {
+      g.fillText(t, cols[i] - (i === 4 ? 78 : 0), 698);
+    });
+    g.strokeStyle = '#e3e6eb'; g.beginPath(); g.moveTo(72, 710); g.lineTo(W - 72, 710); g.stroke();
+    let ry = 744;
+    res.rows.slice(0, 6).forEach(function (x) {
+      g.font = FONT(400, 22); g.fillStyle = '#37424f';
+      const nm = x.name.length > 12 ? x.name.slice(0, 12) + '…' : x.name;
+      g.fillText(nm, cols[0], ry);
+      g.fillText(D(x.dn), cols[1], ry);
+      g.fillText(x.df === Infinity ? '∞' : D(x.df), cols[2], ry);
+      g.fillText(x.total === Infinity ? '∞' : D(x.total), cols[3], ry);
+      g.fillStyle = x.covered ? '#0f7b52' : (x.cover === 'both' ? '#b42318' : '#9a5b00');
+      g.fillText(x.coverLabel, cols[4] - 78, ry);
+      ry += 31;
+    });
+
+    /* 要点 946–1076 */
+    g.fillStyle = '#e8f6ef'; g.fillRect(72, 946, W - 144, 130);
+    put('对焦在超焦距 H 时，近点恰好是 H ÷ 2、远点是 ∞（与 f、N、c 无关）', 96, 986, 24, '#0f7b52', 700, W - 240);
+    put('「前 1/3 后 2/3」只在「对焦距离 = H ÷ 3」时成立，精确式是 H : (2H − 3f)', 96, 1024, 22, '#161b22', 400, W - 240);
+    const ndLo = Math.min.apply(null, res.rows.map(function (x) { return x.nDiff; }));
+    const ndHi = Math.max.apply(null, res.rows.map(function (x) { return x.nDiff; }));
+    put('衍射转折光圈随画幅变化：本次从 ' + F(ndLo) + ' 到 ' + F(ndHi) + '，收小光圈的收益有上限', 96, 1056, 22, '#161b22', 400, W - 240);
+
+    /* 等效 1096–1200 */
+    put('等效口径', 72, 1100, 26, '#161b22', 700, W - 144);
+    if (phone) {
+      put(phone.name + '：' + N1(phone.f) + 'mm ' + F(phone.N) + '（' + shortSensor(phone.sensorName) +
+        '）在视角与景深上 ≈ ' + shortSensor(phone.refSensorName) + ' 的 ' + N1(phone.fEq) + 'mm ' + F(phone.NEq),
+        72, 1138, 22, '#37424f', 400, W - 144);
+      put('等效只是 f ≪ s 时的近似：近点偏差 ' + P2(phone.eqDevNear * 100) + '、远点偏差 ' +
+        (phone.eqDevFar === null ? '不可比较' : P2(phone.eqDevFar * 100)), 72, 1170, 21, '#7b8794', 400, W - 144);
+    } else {
+      put('（本次方案里没有 1/2.3 英寸画幅，未做小底对照）', 72, 1138, 22, '#7b8794', 400, W - 144);
+    }
+
+    /* 页脚 1230–1330 */
+    g.fillStyle = '#e3e6eb'; g.fillRect(72, 1226, W - 144, 1);
+    put('弥散圆口径 ' + C.COC_BY_ID[res.cfg.coc.mode].name + ' / λ ' + res.cfg.lambda + ' nm / 对照画幅 ' + res.cfg.refSensor +
+      ' / 目标 ' + D(res.cfg.target.near) + '–' + (res.cfg.target.farInf ? '∞' : D(res.cfg.target.far)), 72, 1256, 20, '#7b8794', 400, W - 144);
+    put('薄透镜景深公式；光瞳放大率按 1；只做几何光学，不含像差、运动模糊与真实 MTF', 72, 1284, 20, '#7b8794', 400, W - 144);
+    put('默认与场景都是虚构示例，不是任何真实器材的实测数据 · 不联网 · 不做器材评价', 72, 1312, 20, '#7b8794', 400, W - 144);
+
+    cv.toBlob(function (b) {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url; a.download = '景深对账台-结果卡.png'; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+      state.exportCount++;
+    }, 'image/png');
+  }
+
+  /* ── 本机保存 / 导入 ─────────────────────────────── */
+  function saveLocal() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(readInput()));
+      $('saveState').textContent = '已保存到本机（' + new Date().toLocaleTimeString('zh-CN') + '）。只存在这个浏览器里。';
+      toast('已保存到本机');
+    } catch (e) { $('saveState').textContent = '这台浏览器不允许本机保存（可能是隐私模式）。'; }
+  }
+
+  function loadLocal(silent) {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) { if (!silent) toast('本机还没有保存过'); return false; }
+      writeInput(JSON.parse(raw));
+      if (!silent) toast('已读取上次保存的输入');
+      return true;
+    } catch (e) { if (!silent) toast('本机保存的内容读不出来'); return false; }
+  }
+
+  function importBackup(file) {
+    const fr = new FileReader();
+    fr.onload = function () {
+      try {
+        const o = JSON.parse(String(fr.result));
+        const inp = o && o.input ? o.input : o;
+        if (!inp || !inp.rows) throw new Error('结构不对');
+        writeInput(inp);
+        $('scenario').value = '';
+        compute();
+        toast('已导入备份（' + (o.app || '未知来源') + '）');
+      } catch (e) { toast('这个备份文件读不出来'); }
+    };
+    fr.readAsText(file);
+  }
+
+  /* ── 事件绑定 ─────────────────────────────────────── */
+  function bind() {
+    const form = $('form');
+    form.addEventListener('input', function (e) {
+      if (e.target.matches('input[type=text]')) compute();
+    });
+    form.addEventListener('change', function (e) {
+      if (e.target.matches('select, input[type=checkbox]')) { toggleCond(); compute(); }
+    });
+    $('rows').addEventListener('click', function (e) {
+      const dup = e.target.getAttribute && e.target.getAttribute('data-dup');
+      const del = e.target.getAttribute && e.target.getAttribute('data-del');
+      if (dup !== null && dup !== undefined) {
+        const res = state.res;
+        if (res && res.rows.length >= C.MAX_ROWS) { toast('最多 ' + C.MAX_ROWS + ' 个方案'); return; }
+        const src = readInput().rows[Number(dup)];
+        $('rows').insertAdjacentHTML('beforeend', rowHTML({ name: (src.name + ' 副本').slice(0, C.NAME_MAX), sensor: src.sensor, f: src.f, N: src.N, s: src.s }, 0));
+        reindex();
+        compute(); toast('已复制');
+        return;
+      }
+      if (del !== null && del !== undefined) {
+        const items = $('rows').querySelectorAll('.item');
+        if (items.length <= 1) { toast('至少保留一个方案'); return; }
+        items[Number(del)].remove();
+        reindex();
+        state.sel = 0;
+        compute();
+        return;
+      }
+    });
+    $('planBody').addEventListener('click', function (e) {
+      const tr = e.target.closest ? e.target.closest('tr[data-i]') : null;
+      if (!tr) return;
+      state.sel = Number(tr.getAttribute('data-i'));
+      render(state.res);
+    });
+    $('detailBody').addEventListener('click', function (e) {
+      const act2 = e.target.getAttribute && e.target.getAttribute('data-act');
+      if (act2) act(act2);
+    });
+    $('btnAddRow').addEventListener('click', function () {
+      const n = $('rows').querySelectorAll('.item').length;
+      if (n >= C.MAX_ROWS) { toast('最多 ' + C.MAX_ROWS + ' 个方案'); return; }
+      const last = readInput().rows[n - 1];
+      $('rows').insertAdjacentHTML('beforeend', rowHTML({ name: '新方案 ' + (n + 1), sensor: last ? last.sensor : 'ff', f: last ? last.f : 50, N: last ? last.N : 8, s: last ? last.s : 3 }, n));
+      reindex();
+      compute();
+    });
+    $('btnDup').addEventListener('click', function () {
+      const rows = readInput().rows;
+      if (rows.length >= C.MAX_ROWS) { toast('最多 ' + C.MAX_ROWS + ' 个方案'); return; }
+      const last = rows[rows.length - 1];
+      $('rows').insertAdjacentHTML('beforeend', rowHTML({ name: (last.name + ' 副本').slice(0, C.NAME_MAX), sensor: last.sensor, f: last.f, N: last.N, s: last.s }, rows.length));
+      reindex();
+      compute();
+    });
+    $('btnReset').addEventListener('click', function () {
+      writeInput(C.defaultsClone()); $('scenario').value = 'base'; compute(); toast('已恢复默认虚构示例');
+    });
+    $('btnSave').addEventListener('click', saveLocal);
+    $('btnLoad').addEventListener('click', function () { if (loadLocal(false)) { $('scenario').value = ''; compute(); } });
+    $('scenario').addEventListener('change', function (e) {
+      const id = e.target.value;
+      if (!id) return;
+      const sc = C.scenarios.filter(function (s) { return s.id === id; })[0];
+      if (!sc) return;
+      const d = C.defaultsClone();
+      const p = sc.patch;
+      if (p.coc) d.coc = p.coc;
+      if (p.target) d.target = p.target;
+      if (p.rows) d.rows = p.rows;
+      writeInput(d); state.sel = 0; compute(); toast('已换上场景：' + sc.name);
+    });
+    $('btnCsv').addEventListener('click', function () { if (!state.res) return toast('先让输入通过校验'); download('景深对账台.csv', csvText(), 'text/csv;charset=utf-8'); toast('CSV 已导出'); });
+    $('btnMd').addEventListener('click', function () { if (!state.res) return toast('先让输入通过校验'); download('景深对账台.md', mdText(), 'text/markdown;charset=utf-8'); toast('Markdown 已导出'); });
+    $('btnJson').addEventListener('click', function () { if (!state.res) return toast('先让输入通过校验'); download('景深对账台-备份.json', jsonBackup(), 'application/json'); toast('JSON 备份已导出'); });
+    $('btnPng').addEventListener('click', function () { if (!state.res) return toast('先让输入通过校验'); pngCard(); toast('结果卡 PNG 正在生成'); });
+    $('btnPrint').addEventListener('click', function () { window.print(); });
+    $('importFile').addEventListener('change', function (e) { if (e.target.files && e.target.files[0]) importBackup(e.target.files[0]); });
+  }
+
+  function boot() {
+    fillSelects();
+    writeInput(C.defaultsClone());
+    $('scenario').value = 'base';
+    bind();
+    compute();
+    const saved = loadLocal(true);
+    if (saved) { $('scenario').value = ''; compute(); }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  /* 给验收脚本用的只读钩子（不改变页面行为） */
+  window.__dof = {
+    state: state,
+    res: function () { return state.res; },
+    checks: function () { return state.checks; },
+    renderCount: function () { return state.renders; }
+  };
+})();
+</script>
+</body>
+</html>
